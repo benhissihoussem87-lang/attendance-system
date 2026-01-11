@@ -30,3 +30,14 @@
 - Do not remove test-only guards without replacing test isolation.
 - Do not weaken cache signature validation.
 - Always treat the database as the source of truth.
+### Cache Test Isolation
+
+The cache test intentionally skips execution when the first attendance result
+is produced by a policy (e.g. ON_LEAVE, NON_WORKING_DAY).
+
+This is expected behavior:
+- Policy results are authoritative.
+- Cache behavior is only meaningful when engine computation occurs.
+- Tests must enforce their own preconditions.
+
+This is not a workaround, but a deliberate test design decision.
