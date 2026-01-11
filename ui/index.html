@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Attendance Test UI</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Attendance (Test UI)</h1>
+
+    <div class="card">
+      <div class="row">
+        <label for="date">Date</label>
+        <input id="date" type="date" />
+        <button id="btnLoad">Load Attendance</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Result</h2>
+      <div id="status" class="status">No data yet.</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Status</th>
+              <th>Reason</th>
+              <th>IN</th>
+              <th>OUT</th>
+              <th>Worked</th>
+              <th>Break</th>
+              <th>Net</th>
+              <th>Late</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="10" class="muted">No rows</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <details class="raw">
+        <summary>Raw JSON</summary>
+        <pre id="raw"></pre>
+      </details>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

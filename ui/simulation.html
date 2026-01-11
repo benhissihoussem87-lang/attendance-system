@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulation</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    label { display: block; margin-bottom: 8px; }
+    input { width: 120px; padding: 6px; margin-right: 8px; }
+    button { padding: 6px 12px; }
+    pre { background: #f5f5f5; padding: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Simulation</h1>
+  <label for="lateThreshold">Late threshold (minutes)</label>
+  <input id="lateThreshold" type="number" min="0" value="5" />
+  <button id="simulate">Simulate</button>
+
+  <pre id="output" aria-live="polite"></pre>
+
+  <script>
+    const personId = 'p1';
+    const startDate = '2026-01-01';
+    const endDate = '2026-01-08';
+
+    function buildRuleSet(lateAfterMinutes) {
+      return {
+        name: 'Simulation Rule Set',
+        rules: [
+          { type: 'FIXED_SHIFT', start: '08:00', end: '16:00' },
+          { type: 'LATE_THRESHOLD', late_after_minutes: lateAfterMinutes },
+          { type: 'WORK_MINUTES_COMPUTE' },
+          { type: 'LATE_MINUTES_COMPUTE' },
+          { type: 'STATUS_BY_LATE' }
+        ]
+      };
+    }
+
+    document.getElementById('simulate').addEventListener('click', async () => {
+      const lateAfterMinutes = Number(document.getElementById('lateThreshold').value || 0);
+      const payload = {
+        person_id: personId,
+        start_date: startDate,
+        end_date: endDate,
+        alternate_rule_set: buildRuleSet(lateAfterMinutes)
+      };
+
+      const res = await fetch('/api/simulation/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+    });
+  </script>
+</body>
+</html>

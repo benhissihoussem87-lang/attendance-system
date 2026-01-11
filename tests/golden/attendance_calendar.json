@@ -1,0 +1,21 @@
+[
+  {
+    "system_version": "0.1.0",
+    "contract": "attendance-day@1",
+    "engine_contract": "attendance-engine@1",
+    "engine_version": "1.0.0",
+    "employee": "EMP001",
+    "status": "PRESENT",
+    "first_in": "2026-01-07T06:00:00.000Z",
+    "last_out": "2026-01-07T16:00:00.000Z",
+    "worked_minutes": 600,
+    "late_minutes": 0,
+    "explanation": [
+      "FIXED_SHIFT rule applied at index 0",
+      "LATE_THRESHOLD rule applied at index 1",
+      "WORK_MINUTES_COMPUTE rule applied at index 2",
+      "LATE_MINUTES_COMPUTE rule applied at index 3",
+      "STATUS_BY_LATE rule applied at index 4: on time -> PRESENT"
+    ]
+  }
+]

@@ -1,0 +1,34 @@
+<h2>Attendance</h2>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Employee</th>
+      <th>Status</th>
+      <th>IN</th>
+      <th>OUT</th>
+      <th>Worked</th>
+      <th>Late</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<script>
+fetch('http://localhost:3000/api/attendance?date=2026-01-08')
+  .then(r => r.json())
+  .then(data => {
+    const tbody = document.getElementById('rows');
+    data.forEach(r => {
+      tbody.innerHTML += `
+        <tr>
+          <td>${r.employee}</td>
+          <td>${r.status}</td>
+          <td>${r.first_in || '-'}</td>
+          <td>${r.last_out || '-'}</td>
+          <td>${r.worked_minutes}</td>
+          <td>${r.late_minutes}</td>
+        </tr>
+      `;
+    });
+  });
+</script>
