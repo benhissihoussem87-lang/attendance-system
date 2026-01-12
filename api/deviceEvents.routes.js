@@ -5,6 +5,7 @@ const db = require('../db');
 const { invalidateAttendanceCache } = require('../services/cacheInvalidation');
 const { parseDeviceEventsCsv } = require('../services/deviceEventsCsvValidator');
 const { mapAndValidateEvents } = require('../services/deviceEventIngestor');
+const { buildErrorIntelligence } = require('../services/csvErrorIntelligence');
 const { normalizeCanonicalEvent } = require('../contracts/deviceEventContract');
 const { validateCanonicalEvent } = require('../services/validators/deviceEventValidator');
 const { COMPANY_TIMEZONE } = require('../config/timezone');
@@ -182,6 +183,7 @@ router.post(
         valid_rows: validation.valid_rows,
         invalid_rows: validation.invalid_rows,
         errors: validation.errors,
+        error_intelligence: buildErrorIntelligence(validation),
         sample_valid_rows
       });
     } catch (err) {
