@@ -122,3 +122,45 @@ We lock the engine contracts as follows:
 ### Rationale
 Locking contracts ensures determinism, auditability, testability, and strict vendor isolation.
 It enables later simulation (what-if) without changing ingestion or event normalization.
+
+---
+
+## Decision 006 — Separation of Computed Facts and HR Policy Decisions
+
+**Context**  
+As the attendance system evolves to support companies of different sizes,
+it must balance strict data correctness with operational flexibility.
+
+Attendance computation produces factual results derived from device events
+(e.g. ABSENT, INCOMPLETE, INVALID) along with machine-readable flags and audit notes.
+However, companies may require human or policy-based resolution of certain anomalies
+without altering the underlying facts.
+
+**Decision**  
+The system SHALL strictly separate:
+
+1. **Computed Attendance Facts**  
+   - Produced exclusively by the Attendance Engine  
+   - Deterministic, vendor-agnostic, and non-configurable  
+   - Derived solely from normalized device events and locked rules  
+   - Includes status, flags, metrics, and audit trace  
+   - Must never be modified by HR or company configuration  
+
+2. **Policy / Resolution Decisions**  
+   - Applied AFTER computation  
+   - Configurable per company or policy profile  
+   - May reinterpret or override the effective outcome  
+   - Must never alter the computed facts  
+   - Must be fully auditable and attributable to a human or policy  
+
+The Attendance Engine is a fact engine, not a decision engine.
+All flexibility and human judgment MUST live outside the engine.
+
+**Rationale**  
+- Preserves auditability and legal defensibility  
+- Prevents silent data corruption  
+- Allows operational flexibility without weakening core logic  
+- Enables long-term evolution without rewriting historical computations  
+
+**Status**  
+LOCKED
