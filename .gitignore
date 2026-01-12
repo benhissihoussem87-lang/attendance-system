@@ -48,3 +48,8 @@ preview-errors.csv
 # Local / temporary backups
 # =========================
 *backup*
+docs/full_zkt_tables.md
+tools/zkteco/*.csv
+tools/zkteco/*.mdb
+tools/zkteco/*.rar
+tools/zkteco/*.zip
