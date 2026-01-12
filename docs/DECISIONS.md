@@ -96,3 +96,4 @@ Any modification to these decisions requires:
 - Explicit documentation update
 - Versioned migration notes
 - Business approval where applicable
+Attendance Engine Vendor Boundary
