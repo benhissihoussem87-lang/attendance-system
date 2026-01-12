@@ -30,6 +30,73 @@ function assertNoVendorMetadata(event) {
   }
 }
 
+function validateEventSequence(events) {
+  const flags = [];
+  const notes = [];
+  const seenFlags = new Set();
+
+  const addFlag = (flag, note) => {
+    if (!seenFlags.has(flag)) {
+      seenFlags.add(flag);
+      flags.push(flag);
+    }
+    if (note) {
+      notes.push(note);
+    }
+  };
+
+  if (!Array.isArray(events)) {
+    addFlag('events_not_array', 'events must be an array');
+    return {
+      is_valid: false,
+      flags,
+      notes
+    };
+  }
+
+  if (events.length === 0) {
+    return {
+      is_valid: true,
+      flags,
+      notes
+    };
+  }
+
+  if (events[0] && events[0].direction === 'OUT') {
+    addFlag('first_event_out', 'first event direction is OUT');
+  }
+
+  for (let i = 0; i < events.length; i += 1) {
+    const event = events[i];
+    const direction = event ? event.direction : undefined;
+    if (direction !== 'IN' && direction !== 'OUT') {
+      addFlag('invalid_direction', `invalid direction at index ${i}`);
+    }
+
+    if (i > 0) {
+      const prevEvent = events[i - 1];
+      const prevTime = String(prevEvent && prevEvent.event_time_utc ? prevEvent.event_time_utc : '');
+      const currTime = String(event && event.event_time_utc ? event.event_time_utc : '');
+      if (prevTime.localeCompare(currTime) > 0) {
+        addFlag('events_unsorted', `event_time_utc out of order at index ${i}`);
+      }
+
+      const prevDirection = prevEvent ? prevEvent.direction : undefined;
+      if ((prevDirection === 'IN' || prevDirection === 'OUT') &&
+          (direction === 'IN' || direction === 'OUT') &&
+          prevDirection === direction) {
+        addFlag('non_alternating_sequence', `repeated direction at index ${i}`);
+      }
+    }
+  }
+
+  return {
+    is_valid: flags.length === 0,
+    flags,
+    notes
+  };
+}
+
 function computeAttendanceDay(input) {
   if (!input) {
     throw new Error('input is required');
@@ -45,6 +112,27 @@ function computeAttendanceDay(input) {
   }
 
   assertDayFormat(input.day);
+
+  const validation = validateEventSequence(input.events);
+  if (!validation.is_valid) {
+    return {
+      person_id: input.person_id,
+      day: input.day,
+      first_in_utc: null,
+      last_out_utc: null,
+      total_events: input.events.length,
+      minutes_late: null,
+      minutes_early_leave: null,
+      work_minutes: null,
+      status: 'INVALID',
+      flags: validation.flags,
+      audit: {
+        rule_set_id: 'contract-only',
+        computed_at_utc: new Date().toISOString(),
+        notes: validation.notes
+      }
+    };
+  }
 
   const events = input.events.slice();
   events.forEach(event => {
@@ -86,4 +174,4 @@ function computeAttendanceDay(input) {
   };
 }
 
-module.exports = { computeAttendanceDay };
+module.exports = { computeAttendanceDay, validateEventSequence };
