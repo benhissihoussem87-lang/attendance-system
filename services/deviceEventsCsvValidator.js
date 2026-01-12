@@ -125,6 +125,8 @@ function maybeAssign(target, key, value) {
   }
 }
 
+const zktecoAdapter = require('../adapters/vendors/zkteco');
+
 function validateDeviceEventsCsv(csvText, options = {}) {
   const result = {
     total_rows: 0,
@@ -247,4 +249,12 @@ function validateDeviceEventsCsv(csvText, options = {}) {
   return result;
 }
 
-module.exports = { validateDeviceEventsCsv };
+function parseDeviceEventsCsv(csvText, options = {}) {
+  const vendor = options.vendor ? String(options.vendor).toLowerCase() : null;
+  if (vendor === 'zkteco') {
+    return zktecoAdapter.parseCsv(csvText, options);
+  }
+  return validateDeviceEventsCsv(csvText, options);
+}
+
+module.exports = { validateDeviceEventsCsv, parseDeviceEventsCsv };
