@@ -118,6 +118,25 @@ Status: ACTIVE
 
 ---
 
+## Export Errors CSV
+
+POST /api/device-events/import/preview/export-errors.csv
+
+This endpoint returns a CSV file containing the validation errors from preview.
+
+### Request
+- Same as preview
+- Optional vendor selection via `vendor` query parameter or `X-Vendor` header
+
+### Response
+- Content-Type: text/csv; charset=utf-8
+- Content-Disposition: attachment; filename="device-events-preview-errors.csv"
+- CSV header row:
+
+row_number,code,message,recommendation
+
+---
+
 ### COMMIT
 
 Create a single commit with message:

@@ -6,6 +6,7 @@ const { invalidateAttendanceCache } = require('../services/cacheInvalidation');
 const { parseDeviceEventsCsv } = require('../services/deviceEventsCsvValidator');
 const { mapAndValidateEvents } = require('../services/deviceEventIngestor');
 const { buildErrorIntelligence } = require('../services/csvErrorIntelligence');
+const { buildErrorsCsv } = require('../services/csvErrorExport');
 const { normalizeCanonicalEvent } = require('../contracts/deviceEventContract');
 const { validateCanonicalEvent } = require('../services/validators/deviceEventValidator');
 const { COMPANY_TIMEZONE } = require('../config/timezone');
@@ -195,6 +196,47 @@ router.post(
         });
       }
       res.status(500).json({ error: 'preview failed' });
+    }
+  }
+);
+
+/**
+ * POST /api/device-events/import/preview/export-errors.csv
+ * CSV preview errors export (no DB writes)
+ */
+router.post(
+  '/import/preview/export-errors.csv',
+  express.raw({ type: '*/*', limit: '10mb' }),
+  (req, res) => {
+    try {
+      const csvText =
+        req.body instanceof Buffer
+          ? req.body.toString('utf8')
+          : '';
+
+      if (!csvText.trim()) {
+        return res.status(400).json({ error: 'CSV content is required' });
+      }
+
+      const options = {};
+      const vendor = getVendor(req);
+      if (vendor) {
+        options.vendor = vendor;
+      }
+      const delimiter = getDelimiter(req);
+      if (delimiter) {
+        options.delimiter = delimiter;
+      }
+
+      const validation = parseDeviceEventsCsv(csvText, options);
+      const errorCsv = buildErrorsCsv(validation);
+
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', 'attachment; filename="device-events-preview-errors.csv"');
+      return res.status(200).send(errorCsv);
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'export failed' });
     }
   }
 );
