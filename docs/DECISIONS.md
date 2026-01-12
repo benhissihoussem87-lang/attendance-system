@@ -97,3 +97,28 @@ Any modification to these decisions requires:
 - Versioned migration notes
 - Business approval where applicable
 Attendance Engine Vendor Boundary
+## Decision: Attendance Engine I/O Contracts (Locked)
+
+### Context
+Phase 4 introduces deterministic, vendor-agnostic attendance rules.
+Rules must operate only on a pre-resolved attendance day input and must not see vendor-specific metadata.
+
+### Decision
+We lock the engine contracts as follows:
+
+**AttendanceDayInput**
+- Contains person_id, day (YYYY-MM-DD), window_start_utc, window_end_utc
+- Contains an ordered list of sanitized events within the window
+- Each event includes: person_id, event_time_utc (ISO), direction (IN|OUT), device_uid (nullable)
+- Vendor metadata and raw payload are not allowed at the rules boundary
+
+**AttendanceDayResult**
+- Includes derived facts: first_in_utc, last_out_utc, total_events
+- Includes metrics: minutes_late, minutes_early_leave, work_minutes (nullable)
+- Includes decision: status (PRESENT|ABSENT|INCOMPLETE|INVALID)
+- Includes machine-readable flags
+- Includes bounded audit trace: rule_set_id, computed_at_utc, notes[]
+
+### Rationale
+Locking contracts ensures determinism, auditability, testability, and strict vendor isolation.
+It enables later simulation (what-if) without changing ingestion or event normalization.
