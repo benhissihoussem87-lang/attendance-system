@@ -1,3 +1,6 @@
+const { computeMetricsFixedShift } = require('./rules/computeMetricsFixedShift');
+const { computeMetricsEarlyLeave } = require('./rules/computeMetricsEarlyLeaveFixedShift');
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -155,21 +158,47 @@ function computeAttendanceDay(input) {
     }
   }
 
+  const firstInUtc = firstIn ? firstIn.event_time_utc : null;
+  const lastOutUtc = lastOut ? lastOut.event_time_utc : null;
+  const ruleSet = {
+    id: 'default-v1',
+    shift_type: 'FIXED',
+    fixed_shift: {
+      start_local: '08:00',
+      end_local: '17:00',
+      late_grace_minutes: 5
+    },
+    pairing_strategy: 'FIRST_IN_LAST_OUT'
+  };
+  const timezone = 'Asia/Riyadh';
+  const metrics = computeMetricsFixedShift({
+    first_in_utc: firstInUtc,
+    person_id: input.person_id,
+    day: input.day
+  }, ruleSet, timezone);
+  const earlyLeave = computeMetricsEarlyLeave({
+    person_id: input.person_id,
+    day: input.day,
+    last_out_utc: lastOutUtc
+  }, ruleSet, timezone);
+  const flags = [...metrics.flags, ...earlyLeave.flags];
+  const notes = [...metrics.notes, ...earlyLeave.notes];
+
   return {
     person_id: input.person_id,
     day: input.day,
-    first_in_utc: firstIn ? firstIn.event_time_utc : null,
-    last_out_utc: lastOut ? lastOut.event_time_utc : null,
+    first_in_utc: firstInUtc,
+    last_out_utc: lastOutUtc,
     total_events: events.length,
-    minutes_late: null,
-    minutes_early_leave: null,
+    minutes_late: metrics.minutes_late,
+    minutes_early_leave: earlyLeave.minutes_early_leave,
     work_minutes: null,
     status: 'PRESENT',
-    flags: [],
+    flags,
     audit: {
       rule_set_id: 'contract-only',
       computed_at_utc: new Date().toISOString(),
-      notes: []
+      notes
     }
   };
 }
