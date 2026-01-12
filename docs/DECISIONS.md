@@ -125,7 +125,7 @@ It enables later simulation (what-if) without changing ingestion or event normal
 
 ---
 
-## Decision 006 — Separation of Computed Facts and HR Policy Decisions
+## Decision 006 ï¿½ Separation of Computed Facts and HR Policy Decisions
 
 **Context**  
 As the attendance system evolves to support companies of different sizes,
@@ -164,3 +164,112 @@ All flexibility and human judgment MUST live outside the engine.
 
 **Status**  
 LOCKED
+
+
+## Decision 007 - Policy Engine Architecture (Computed Facts vs Effective Outcome)
+
+**Context**
+Phase 4 introduced a deterministic, vendor-agnostic Attendance Engine that produces computed attendance facts
+(status/flags/metrics/audit) from normalized device events.
+In real operations, companies must apply HR policy and human resolution workflows (excused absence, approved remote work,
+manual corrections) without modifying the computed facts.
+Enterprise-grade systems (e.g., UKG/Kronos, ADP, SAP, Workday patterns) consistently separate:
+- immutable computed facts (system truth)
+- mutable policy/resolution outcomes (HR decision layer) with auditability and approvals
+
+We must support small companies (simple workflow) and large factories (high volume, delegation, bulk actions)
+while preserving determinism, auditability, and long-term maintainability (10+ years).
+
+**Decision**
+We introduce a separate **Policy Engine** layer that evaluates computed facts and produces an **Effective Outcome**
+used for payroll and operational reporting, without altering the computed facts.
+
+1) **Computed Facts (Immutable)**
+- Source: Attendance Engine output saved in `attendance_days` (or equivalent).
+- Includes:
+  - computed_status (PRESENT|ABSENT|INCOMPLETE|INVALID)
+  - computed_flags[] (machine-readable)
+  - computed_metrics (late/early/work minutes, nullable)
+  - computed_audit (rule_set_id, computed_at_utc, notes/context)
+- MUST NOT be modified by HR actions or policy configuration.
+
+2) **Effective Outcome (Mutable, Audited)**
+- Produced by Policy Engine and/or HR manual resolution.
+- Represents how the organization chooses to treat the day for payroll/compliance.
+- Stored separately as **policy/resolution records**, not as edits to computed facts.
+- Effective outcome MAY differ from computed status (e.g., INVALID -> NEEDS_REVIEW -> EXCUSED).
+
+3) **Policy Profiles (Company-configurable)**
+- Each company selects a policy profile version (e.g., `factory-standard-v1`).
+- A policy profile defines:
+  - mappings from computed_status to effective_status
+  - overrides triggered by specific flags (e.g., NO_EVENTS, MISSING_OUT, FIRST_EVENT_OUT)
+  - whether a computed condition requires review/approval
+  - guardrails and permissions (who can override what)
+- Policy profiles are versioned. Changing a policy profile MUST NOT rewrite history silently.
+
+4) **Manual Resolutions (HR/Supervisor Actions)**
+- Manual resolution is a first-class entity:
+  - who (actor_id / role)
+  - when (timestamp)
+  - what changed (effective_status and/or effective_metrics)
+  - why (reason_code + free-text note)
+  - optional attachments/references (leave request, mission order, etc.)
+- Manual resolutions do not mutate computed facts. They produce or replace the effective outcome for that day.
+- Manual resolutions may be subject to approval workflow depending on policy profile.
+
+5) **Workflow States**
+The Policy Engine SHALL support operational states that enable queue-based review:
+- `AUTO_APPLIED`: policy applied automatically, no human review required
+- `NEEDS_REVIEW`: human action required before payroll finalization
+- `APPROVED`: resolved and approved (if approvals enabled)
+- `REJECTED`: resolution rejected (requires follow-up)
+
+6) **Effective Status Model**
+We distinguish between computed statuses and effective statuses.
+Computed statuses remain the engineâ€™s 4-valued set.
+Effective statuses SHALL include at minimum:
+- `PRESENT`
+- `ABSENT`
+- `INCOMPLETE`
+- `INVALID`
+and MAY include policy-only operational statuses:
+- `NEEDS_REVIEW`
+- `EXCUSED`
+- `MANUAL_ADJUSTED`
+(Exact list is controlled by policy profile versioning; computed statuses remain unchanged.)
+
+7) **Precedence Rules**
+When producing effective outcome for a day:
+- Base: computed facts from attendance engine
+- Apply: company policy profile rules to produce default effective outcome + workflow state
+- Override: apply the latest active manual resolution (if any) with audit trace
+- Incorporate: administrative sources (approved leaves, missions) as policy inputs, not as computed fact mutations
+
+**Rationale**
+- **Auditability & Legal Defensibility**: computed facts are preserved; policy decisions are explicit, attributable, and reviewable.
+- **Operational Flexibility**: HR can handle real-world exceptions without weakening engine correctness.
+- **Maintainability**: policy changes evolve independently from ingestion and engine logic; safer upgrades over 10+ years.
+- **Scalability**: factories need review queues and bulk operations; small companies can keep defaults with minimal configuration.
+- **Future Simulation**: policy profile versioning enables what-if simulations without rewriting raw event history.
+
+**Consequences**
+- We must add separate persistence for policy profiles and day resolutions.
+- Reporting must clearly distinguish:
+  - computed_* (engine truth)
+  - effective_* (policy/HR outcome)
+- Tests must enforce that:
+  - engine output is unchanged by policy updates
+  - policy updates do not mutate device events or computed facts
+  - resolutions are auditable and permission-guarded
+- Any future UI must expose both layers to avoid confusion.
+
+**Status**
+LOCKED
+
+**Change Control**
+Modifying this decision requires:
+- updating this document
+- introducing a new policy profile version (no silent mutation of prior outcomes)
+- migration notes if storage structures change
+- business approval for payroll-impacting behavior
