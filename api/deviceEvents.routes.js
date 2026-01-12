@@ -3,8 +3,10 @@ const router = express.Router();
 
 const db = require('../db');
 const { invalidateAttendanceCache } = require('../services/cacheInvalidation');
-const { validateDeviceEventsCsv } = require('../services/deviceEventsCsvValidator');
+const { parseDeviceEventsCsv } = require('../services/deviceEventsCsvValidator');
 const { mapAndValidateEvents } = require('../services/deviceEventIngestor');
+const { normalizeCanonicalEvent } = require('../contracts/deviceEventContract');
+const { validateCanonicalEvent } = require('../services/validators/deviceEventValidator');
 const { COMPANY_TIMEZONE } = require('../config/timezone');
 const {
   interpretEventTime,
@@ -33,6 +35,18 @@ function getDelimiter(req) {
     return value;
   }
   return undefined;
+}
+
+function getVendor(req) {
+  const raw =
+    (req.query && req.query.vendor) ||
+    req.get('x-vendor');
+
+  if (!raw) {
+    return null;
+  }
+
+  return String(raw).trim().toLowerCase();
 }
 
 /**
@@ -112,19 +126,24 @@ router.post(
       }
 
       const options = {};
+      const vendor = getVendor(req);
+      if (vendor) {
+        options.vendor = vendor;
+      }
       const delimiter = getDelimiter(req);
       if (delimiter) {
         options.delimiter = delimiter;
       }
 
-      const validation = validateDeviceEventsCsv(csvText, options);
+      const validation = parseDeviceEventsCsv(csvText, options);
       const timeInterpretationEnabled = isTimeInterpretationEnabled();
+      const isZkteco = vendor === 'zkteco';
 
       const sample_valid_rows = validation.rows
         .filter(row => row.valid)
         .slice(0, 10)
         .map(row => {
-          if (!timeInterpretationEnabled) {
+          if (isZkteco || !timeInterpretationEnabled) {
             return {
               row_number: row.row_number,
               data: row.data
@@ -197,17 +216,147 @@ router.post(
     }
 
     const options = {};
+    const vendor = getVendor(req);
+    if (vendor) {
+      options.vendor = vendor;
+    }
     const delimiter = getDelimiter(req);
     if (delimiter) {
       options.delimiter = delimiter;
     }
-    const validationResult = validateDeviceEventsCsv(csvText, options);
+    const validationResult = parseDeviceEventsCsv(csvText, options);
     const missingRequired = validationResult.errors.some(
       err => err.code === 'MISSING_REQUIRED_COLUMN'
     );
 
     if (missingRequired) {
       return res.status(400).json(validationResult);
+    }
+
+    if (vendor === 'zkteco') {
+      const errors = validationResult.errors.slice(0, 200);
+      let inserted_rows = 0;
+      let skipped_rows = 0;
+      let failed_rows = validationResult.invalid_rows;
+      const first3Inserted = [];
+      const last3Inserted = [];
+
+      for (const row of validationResult.rows) {
+        if (!row.valid) {
+          continue;
+        }
+
+        const normalized = normalizeCanonicalEvent(row.data);
+        const validation = validateCanonicalEvent(normalized);
+        if (!validation.ok) {
+          if (errors.length < 200) {
+            const details = validation.errors || [];
+            const message = details.length > 0
+              ? details.map(err => `${err.field}: ${err.message}`).join('; ')
+              : 'Invalid device event';
+            errors.push({
+              row_number: row.row_number,
+              code: 'INGEST_INVALID',
+              message
+            });
+          }
+          failed_rows += 1;
+          continue;
+        }
+
+        const values = [
+          normalized.person_id,
+          normalized.event_time_utc,
+          normalized.direction,
+          normalized.vendor,
+          normalized.device_uid,
+          normalized.raw_payload
+        ];
+
+        let result;
+        try {
+          result = await db.query(
+            `
+            INSERT INTO device_events
+              (person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
+            VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+            ON CONFLICT (person_id, event_time_utc, direction, device_uid) DO NOTHING
+            RETURNING person_id, event_time_utc, direction, device_uid, vendor
+            `,
+            values
+          );
+        } catch (dbErr) {
+          const details = [];
+          if (dbErr && dbErr.code) {
+            details.push(`code=${dbErr.code}`);
+          }
+          if (dbErr && dbErr.message) {
+            const msg = String(dbErr.message);
+            details.push(`message=${msg.slice(0, 200)}`);
+          }
+          if (errors.length < 200) {
+            errors.push({
+              row_number: row.row_number,
+              code: 'DB_INSERT_FAILED',
+              message: details.length > 0
+                ? `Database insert failed (${details.join(', ')})`
+                : 'Database insert failed'
+            });
+          }
+          failed_rows += 1;
+          continue;
+        }
+
+        if (result.rowCount === 1) {
+          inserted_rows += 1;
+          try {
+            await invalidateAttendanceCache(db, normalized.person_id, normalized.event_time_utc);
+          } catch (cacheErr) {
+            if (errors.length < 200) {
+              errors.push({
+                row_number: row.row_number,
+                code: 'CACHE_INVALIDATION_FAILED',
+                message: 'Cache invalidation failed'
+              });
+            }
+          }
+          const returnedRow = result.rows[0] || {};
+          const sampleItem = {
+            row_number: row.row_number,
+            person_id: returnedRow.person_id,
+            event_time_utc: returnedRow.event_time_utc,
+            direction: returnedRow.direction,
+            device_uid: returnedRow.device_uid,
+            vendor: returnedRow.vendor
+          };
+          if (first3Inserted.length < 3) {
+            first3Inserted.push(sampleItem);
+          }
+          last3Inserted.push(sampleItem);
+          if (last3Inserted.length > 3) {
+            last3Inserted.shift();
+          }
+        } else {
+          skipped_rows += 1;
+        }
+      }
+
+      return res.json({
+        system_version: SYSTEM_VERSION,
+        contract: CSV_CONTRACT,
+        import_version: CSV_IMPORT_VERSION,
+        total_rows: validationResult.total_rows,
+        valid_rows: validationResult.valid_rows,
+        invalid_rows: validationResult.invalid_rows,
+        inserted_rows,
+        skipped_rows,
+        failed_rows,
+        errors,
+        inserted_samples: {
+          first3: first3Inserted,
+          last3: last3Inserted
+        }
+      });
     }
 
     const errors = validationResult.errors.slice(0, 200);
