@@ -5,6 +5,7 @@ function invalidResult(message) {
     last_out: null,
     worked_minutes: 0,
     late_minutes: 0,
+    flags: [],
     explanation: ['Metrics: ' + message]
   };
 }

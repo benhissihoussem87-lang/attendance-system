@@ -31,7 +31,8 @@ module.exports = {
         net_worked_minutes: 0
       },
       decision: {
-        status: 'UNKNOWN'
+        status: 'UNKNOWN',
+        flags: []
       },
       explanation: [],
       result: null,

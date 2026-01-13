@@ -273,3 +273,42 @@ Modifying this decision requires:
 - introducing a new policy profile version (no silent mutation of prior outcomes)
 - migration notes if storage structures change
 - business approval for payroll-impacting behavior
+
+Decision 008 — Fact Layer Semantics (LOCKED)
+
+ComputedStatus (day classification; exactly one per day):
+- PRESENT
+- ABSENT
+- INCOMPLETE
+- INVALID
+
+Rule: "LATE" is NEVER a ComputedStatus.
+Late/early are exceptions expressed as flags + metrics.
+
+Flag model (exceptions/anomalies/policy signals; extensible):
+- NO_EVENTS
+- MISSING_IN
+- MISSING_OUT
+- LATE
+- LEFT_EARLY
+- FIRST_EVENT_OUT
+- NON_ALTERNATING_SEQUENCE
+- EVENTS_UNSORTED
+- INVALID_DIRECTION
+... (extensible with versioned reason codes)
+
+Metrics (quantitative; nullable when not computable):
+- minutes_late: number | null
+- minutes_early_leave: number | null
+- work_minutes: number | null
+
+Classification precedence (MUST be deterministic):
+1) If sequence is structurally invalid (unsorted / invalid direction / non-alternating):
+   -> ComputedStatus = INVALID + corresponding flags/reason codes
+2) Else if event_count == 0:
+   -> ComputedStatus = ABSENT + NO_EVENTS
+3) Else if missing IN or missing OUT:
+   -> ComputedStatus = INCOMPLETE + (MISSING_IN and/or MISSING_OUT) (+ FIRST_EVENT_OUT when applicable)
+4) Else:
+   -> ComputedStatus = PRESENT
+Additional flags (LATE/LEFT_EARLY) are derived after classification from computed metrics.

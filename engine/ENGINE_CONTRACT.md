@@ -6,7 +6,7 @@ Input
 - device events (UTC timestamps)
 
 Output guarantees
-- status: PRESENT/LATE/ABSENT/OFF/LEAVE
+- status: PRESENT/ABSENT/INCOMPLETE/INVALID
 - metrics: worked_minutes, late_minutes
 - first_in, last_out (if present)
 - explanation: string[]

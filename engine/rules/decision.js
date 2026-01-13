@@ -5,11 +5,13 @@ function invalidResult(message) {
     last_out: null,
     worked_minutes: 0,
     late_minutes: 0,
+    flags: [],
     explanation: ['Decision: ' + message]
   };
 }
 
 function buildResult(ctx) {
+  const flags = Array.isArray(ctx.decision.flags) ? ctx.decision.flags : [];
   return {
     status: ctx.decision.status,
     reason_code: ctx.decision.reason_code,
@@ -19,6 +21,7 @@ function buildResult(ctx) {
     late_minutes: ctx.metrics.late_minutes,
     break_minutes: ctx.metrics.break_minutes,
     net_worked_minutes: ctx.metrics.net_worked_minutes,
+    flags,
     explanation: ctx.explanation
   };
 }
@@ -32,6 +35,15 @@ function firstStatusRuleType(rules) {
 
   const rule = rules.find(item => statusTypes.has(item.type));
   return rule ? rule.type : 'UNKNOWN_STATUS_RULE';
+}
+
+function addFlag(ctx, flag) {
+  if (!Array.isArray(ctx.decision.flags)) {
+    ctx.decision.flags = [];
+  }
+  if (!ctx.decision.flags.includes(flag)) {
+    ctx.decision.flags.push(flag);
+  }
 }
 
 module.exports = function decideStatus(ctx) {
@@ -57,9 +69,10 @@ module.exports = function decideStatus(ctx) {
 
     if (rule.type === 'STATUS_BY_LATE') {
       if (ctx.metrics.late_minutes > 0) {
-        ctx.decision.status = 'LATE';
+        ctx.decision.status = 'PRESENT';
         ctx.decision.reason_code = 'LATE_ARRIVAL';
-        ctx.explanation.push('STATUS_BY_LATE rule applied at index ' + index + ': late -> LATE');
+        addFlag(ctx, 'LATE');
+        ctx.explanation.push('STATUS_BY_LATE rule applied at index ' + index + ': late -> PRESENT (flagged LATE)');
       } else {
         ctx.decision.status = 'PRESENT';
         ctx.decision.reason_code = 'ON_TIME';
