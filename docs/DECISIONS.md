@@ -329,9 +329,20 @@ Plan:
   returning both layers explicitly (computed_* vs effective_*), without mutating computed facts.
 **Note: Test reset clears policy-related artifacts (e.g. leave rows) to ensure deterministic cache testing. This does not affect production behavior.
 
-Decision 010 — /api/attendance Input Contract (Compatibility)
+## Decision 010 — Attendance API Outputs Include Computed + Effective Layers
 
-- date is mandatory and must be YYYY-MM-DD; invalid/missing returns 400 (prevents invalid Date crashes).
-- person_id is currently optional for backward compatibility with existing test/demo flows; if missing, the endpoint falls back to the default demo employee (employees[0].person_id).
-- This fallback is temporary and will be removed behind a versioned API once UI/client integration is finalized.
-Status: LOCKED (until API versioning step)
+**Decision**
+The /api/attendance endpoint SHALL return:
+- `computed`: immutable attendance facts produced by the engine (status ∈ PRESENT|ABSENT|INCOMPLETE|INVALID, flags, metrics, audit)
+- `effective`: policy/resolution outcome used operationally (e.g., ON_LEAVE, NON_WORKING_DAY, NEEDS_REVIEW), sourced from AUTO_POLICY and/or manual resolutions
+
+Computed facts MUST NOT be replaced or mutated by policy decisions.
+
+**Rationale**
+- Preserves auditability and legal defensibility
+- Prevents semantic drift (facts vs HR decisions)
+- Enables policy evolution and simulation without rewriting history
+- Supports enterprise workflows (review queues, approvals)
+
+**Status**
+LOCKED
