@@ -9,6 +9,7 @@ const { isNonWorkingDay, isOnLeave } = require('../services/policy/policyContext
 const { getActivePolicyProfile } = require('../services/policy/policyProfileProvider');
 const { evaluateEffectiveOutcome } = require('../services/policy/evaluateEffectiveOutcome');
 const { upsertAutoPolicyResolution } = require('../services/policy/persistAutoPolicyResolution');
+const { getActiveResolution } = require('../services/policy/manualResolutionService');
 const { deriveWorkDate } = require('../services/dayBoundary');
 const { getUtcWindowForWorkDate } = require('../services/dayBoundaryWindow');
 const { getCompanyConfig } = require('../services/companyConfigProvider');
@@ -335,6 +336,28 @@ router.get('/', async (req, res) => {
       });
     }
 
+    const activeResolution = attendanceDayId
+      ? await getActiveResolution(db, attendanceDayId)
+      : null;
+
+    let effectiveOutput = {
+      status: effective.status,
+      state: effective.state,
+      source: effective.source,
+      profile: effective.profile,
+      reasons: effective.reasons
+    };
+
+    if (activeResolution && activeResolution.action !== 'AUTO_POLICY') {
+      effectiveOutput = {
+        status: activeResolution.effective_status,
+        state: 'APPROVED',
+        source: 'MANUAL_RESOLUTION',
+        profile: effective.profile,
+        reasons: activeResolution.reason_code ? [activeResolution.reason_code] : []
+      };
+    }
+
     let record;
     if (nonWorkingDay) {
       record = {
@@ -383,14 +406,9 @@ router.get('/', async (req, res) => {
       };
     }
 
+    record.attendance_day_id = attendanceDayId;
     record.computed = computed;
-    record.effective = {
-      status: effective.status,
-      state: effective.state,
-      source: effective.source,
-      profile: effective.profile,
-      reasons: effective.reasons
-    };
+    record.effective = effectiveOutput;
 
     res.json(finalizeRecords([record], cacheMeta, date, companyConfig, windowMeta));
 

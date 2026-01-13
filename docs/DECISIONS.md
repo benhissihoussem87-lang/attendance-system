@@ -217,6 +217,7 @@ used for payroll and operational reporting, without altering the computed facts.
   - optional attachments/references (leave request, mission order, etc.)
 - Manual resolutions do not mutate computed facts. They produce or replace the effective outcome for that day.
 - Manual resolutions may be subject to approval workflow depending on policy profile.
+- TODO (Concurrency hardening, not required now): inside createManualResolution(), lock the current active resolution row (if any) for the same attendance_day_id using `SELECT ... FOR UPDATE` within the transaction before deactivating/inserting, to prevent rare race conditions under high load (10+ year robustness). If a UNIQUE violation occurs on the one-active constraint, retry once.
 
 5) **Workflow States**
 The Policy Engine SHALL support operational states that enable queue-based review:
