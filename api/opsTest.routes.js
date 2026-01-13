@@ -85,6 +85,16 @@ router.post('/reset', async (req, res) => {
       [person_id, dateMinus1.toISOString().slice(0, 10), date, datePlus1.toISOString().slice(0, 10)]
     );
 
+    await db.query(
+      `
+      DELETE FROM employee_leaves
+      WHERE person_id = $1
+        AND start_date <= $2
+        AND end_date >= $3
+      `,
+      [person_id, datePlus1.toISOString().slice(0, 10), dateMinus1.toISOString().slice(0, 10)]
+    );
+
     await db.query('COMMIT');
     return res.json({ status: 'ok' });
   } catch (err) {
