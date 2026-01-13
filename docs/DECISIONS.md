@@ -312,3 +312,26 @@ Classification precedence (MUST be deterministic):
 4) Else:
    -> ComputedStatus = PRESENT
 Additional flags (LATE/LEFT_EARLY) are derived after classification from computed metrics.
+
+
+Decision 009 — Attendance endpoint behavior under policy conditions (TEMPORARY)
+
+Current behavior:
+- /api/attendance returns policy-only results for NON_WORKING_DAY and ON_LEAVE with source='policy'
+  before attempting DB cache or engine computation.
+
+Impact:
+- Cache tests may SKIP when policy results are returned, because no computed facts are produced for that day.
+
+Plan:
+- Short-term: stabilize tests by ensuring test reset clears leave data for the test person/date (test-only).
+- Phase 5: refactor outputs to always produce computed facts, then apply policy to produce an effective outcome,
+  returning both layers explicitly (computed_* vs effective_*), without mutating computed facts.
+**Note: Test reset clears policy-related artifacts (e.g. leave rows) to ensure deterministic cache testing. This does not affect production behavior.
+
+Decision 010 — /api/attendance Input Contract (Compatibility)
+
+- date is mandatory and must be YYYY-MM-DD; invalid/missing returns 400 (prevents invalid Date crashes).
+- person_id is currently optional for backward compatibility with existing test/demo flows; if missing, the endpoint falls back to the default demo employee (employees[0].person_id).
+- This fallback is temporary and will be removed behind a versioned API once UI/client integration is finalized.
+Status: LOCKED (until API versioning step)
