@@ -5,8 +5,10 @@ const engine = require('../engine/AttendanceEngine');
 const employees = require('../data/mockEmployees');
 const ruleSets = require('../data/mockRuleSets');
 const db = require('../db');
-const { isWorkingDay } = require('../services/workingDays');
-const { isOnLeave } = require('../services/leaves');
+const { isNonWorkingDay, isOnLeave } = require('../services/policy/policyContextProvider');
+const { getActivePolicyProfile } = require('../services/policy/policyProfileProvider');
+const { evaluateEffectiveOutcome } = require('../services/policy/evaluateEffectiveOutcome');
+const { upsertAutoPolicyResolution } = require('../services/policy/persistAutoPolicyResolution');
 const { deriveWorkDate } = require('../services/dayBoundary');
 const { getUtcWindowForWorkDate } = require('../services/dayBoundaryWindow');
 const { getCompanyConfig } = require('../services/companyConfigProvider');
@@ -84,11 +86,41 @@ function finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta) {
   return out;
 }
 
+function buildComputedPayload(data, signature) {
+  return {
+    status: data.status,
+    flags: Array.isArray(data.flags) ? data.flags : [],
+    metrics: {
+      worked_minutes: data.worked_minutes ?? null,
+      late_minutes: data.late_minutes ?? null,
+      break_minutes: data.break_minutes ?? null,
+      net_worked_minutes: data.net_worked_minutes ?? null
+    },
+    audit: {
+      explanation: data.explanation,
+      computation_context: signature
+    }
+  };
+}
+
+function isValidDateString(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime());
+}
+
 router.get('/', async (req, res) => {
   try {
     const date = req.query.date;
+    if (!isValidDateString(date)) {
+      return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+    }
     const employee = employees[0];
-    const personId = employee.person_id;
+    const personIdParam = req.query.person_id;
+    const usedDefaultPerson = !personIdParam;
+    const personId = personIdParam || employee.person_id;
     const companyId = employee.company_id || 'DEFAULT';
     const companyConfig = await getCompanyConfig(db, companyId);
     const signature = buildComputationSignature(companyConfig, {
@@ -122,49 +154,19 @@ router.get('/', async (req, res) => {
       cache_reason: 'missing_signature'
     };
 
-    if (!(await isWorkingDay(db, companyId, date))) {
-      const records = [{
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        status: 'NON_WORKING_DAY',
-        first_in: null,
-        last_out: null,
-        worked_minutes: 0,
-        late_minutes: 0,
-        break_minutes: 0,
-        net_worked_minutes: 0,
-        explanation: ['Non-working day (company policy)'],
-        source: 'policy'
-      }];
-      return res.json(finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta));
-    }
+    const policyProfile = await getActivePolicyProfile(db, companyId);
+    const nonWorkingDay = await isNonWorkingDay(db, companyId, date);
+    const onLeave = await isOnLeave(db, personId, date);
 
-    if (await isOnLeave(db, personId, date)) {
-      const records = [{
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        status: 'ON_LEAVE',
-        first_in: null,
-        last_out: null,
-        worked_minutes: 0,
-        late_minutes: 0,
-        break_minutes: 0,
-        net_worked_minutes: 0,
-        explanation: ['Employee on leave'],
-        source: 'policy'
-      }];
-      return res.json(finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta));
-    }
+    let computedResult = null;
+    let computedSource = null;
+    let computedExplanation = null;
+    let attendanceDayId = null;
 
     // 1: Try DB cache
     const cached = await db.query(`
       SELECT
+        id,
         status,
         first_in_utc AS first_in,
         last_out_utc AS last_out,
@@ -223,17 +225,14 @@ router.get('/', async (req, res) => {
         const explanationOut = parsedExplanation && Array.isArray(parsedExplanation.explanation)
           ? parsedExplanation.explanation
           : cachedRow.explanation;
-        const records = [{
-          system_version: SYSTEM_VERSION,
-          contract: ATTENDANCE_OUTPUT_CONTRACT,
-          engine_contract: ENGINE_CONTRACT,
-          engine_version: ENGINE_VERSION,
-          employee: employee.employee_code,
-          ...cachedRow,
-          explanation: explanationOut,
-          source: 'db'
-        }];
-        return res.json(finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta));
+        const { id: cachedId, ...cachedData } = cachedRow;
+        attendanceDayId = cachedId;
+        computedExplanation = explanationOut;
+        computedResult = {
+          ...cachedData,
+          explanation: explanationOut
+        };
+        computedSource = 'db';
       }
     }
 
@@ -241,71 +240,159 @@ router.get('/', async (req, res) => {
       console.log('[cache] FALLTHROUGH: cache row exists but not used');
     }
 
-    // 2: Load facts from device_events
-    const eventsRes = await db.query(`
-      SELECT person_id, event_time_utc, direction
-      FROM device_events
-      WHERE person_id = $1
-        AND event_time_utc >= $2
-        AND event_time_utc < $3
-      ORDER BY event_time_utc
-    `, [personId, windowStartUtc, windowEndUtc]);
+    if (!computedResult) {
+      // 2: Load facts from device_events
+      const eventsRes = await db.query(`
+        SELECT person_id, event_time_utc, direction
+        FROM device_events
+        WHERE person_id = $1
+          AND event_time_utc >= $2
+          AND event_time_utc < $3
+        ORDER BY event_time_utc
+      `, [personId, windowStartUtc, windowEndUtc]);
 
-    const dayEvents = eventsRes.rows.map(e => ({
-      person_id: e.person_id,
-      event_time: e.event_time_utc,
-      direction: e.direction
-    }));
+      const dayEvents = eventsRes.rows.map(e => ({
+        person_id: e.person_id,
+        event_time: e.event_time_utc,
+        direction: e.direction
+      }));
 
-    // 3: Compute with engine (IMPORTANT: before any use of result)
-    const result = engine.computeDay({
-      person: employee,
-      date,
-      events: dayEvents,
-      ruleSet: ruleSets[employee.rule_set_id]
+      // 3: Compute with engine (IMPORTANT: before any use of result)
+      const result = engine.computeDay({
+        person: employee,
+        date,
+        events: dayEvents,
+        ruleSet: ruleSets[employee.rule_set_id]
+      });
+
+      computedResult = result;
+      computedSource = 'engine';
+      computedExplanation = result.explanation;
+
+      // 4: Save result to DB
+      const explanationPayload = {
+        explanation: result.explanation,
+        computation_context: signature
+      };
+      const inserted = await db.query(`
+        INSERT INTO attendance_days
+          (person_id, work_date, status, first_in_utc, last_out_utc,
+           worked_minutes, late_minutes, explanation)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (person_id, work_date)
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          first_in_utc = EXCLUDED.first_in_utc,
+          last_out_utc = EXCLUDED.last_out_utc,
+          worked_minutes = EXCLUDED.worked_minutes,
+          late_minutes = EXCLUDED.late_minutes,
+          explanation = EXCLUDED.explanation,
+          computed_at = now()
+        RETURNING id
+      `, [
+        personId,
+        date,
+        result.status,
+        result.first_in,
+        result.last_out,
+        result.worked_minutes,
+        result.late_minutes,
+        JSON.stringify(explanationPayload)
+      ]);
+
+      attendanceDayId = inserted.rows[0].id;
+    }
+
+    const computed = buildComputedPayload({
+      status: computedResult.status,
+      flags: computedResult.flags,
+      worked_minutes: computedResult.worked_minutes,
+      late_minutes: computedResult.late_minutes,
+      break_minutes: computedResult.break_minutes,
+      net_worked_minutes: computedResult.net_worked_minutes,
+      explanation: computedExplanation
+    }, signature);
+
+    const effective = evaluateEffectiveOutcome({
+      company_id: companyId,
+      work_date: date,
+      computed,
+      context: {
+        is_non_working_day: nonWorkingDay,
+        is_on_leave: onLeave
+      },
+      policy_profile: policyProfile
     });
 
-    // 4: Save result to DB
-    const explanationPayload = {
-      explanation: result.explanation,
-      computation_context: signature
-    };
-    await db.query(`
-      INSERT INTO attendance_days
-        (person_id, work_date, status, first_in_utc, last_out_utc,
-         worked_minutes, late_minutes, explanation)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      ON CONFLICT (person_id, work_date)
-      DO UPDATE SET
-        status = EXCLUDED.status,
-        first_in_utc = EXCLUDED.first_in_utc,
-        last_out_utc = EXCLUDED.last_out_utc,
-        worked_minutes = EXCLUDED.worked_minutes,
-        late_minutes = EXCLUDED.late_minutes,
-        explanation = EXCLUDED.explanation,
-        computed_at = now()
-    `, [
-      personId,
-      date,
-      result.status,
-      result.first_in,
-      result.last_out,
-      result.worked_minutes,
-      result.late_minutes,
-      JSON.stringify(explanationPayload)
-    ]);
+    if (attendanceDayId) {
+      await upsertAutoPolicyResolution(db, {
+        attendance_day_id: attendanceDayId,
+        company_id: companyId,
+        profile_id: policyProfile.id,
+        work_date: date,
+        person_id: personId,
+        effective
+      });
+    }
 
-    // 5: Response
-    const records = [{
-      system_version: SYSTEM_VERSION,
-      contract: ATTENDANCE_OUTPUT_CONTRACT,
-      engine_contract: ENGINE_CONTRACT,
-      engine_version: ENGINE_VERSION,
-      employee: employee.employee_code,
-      ...result,
-      source: 'engine'
-    }];
-    res.json(finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta));
+    let record;
+    if (nonWorkingDay) {
+      record = {
+        system_version: SYSTEM_VERSION,
+        contract: ATTENDANCE_OUTPUT_CONTRACT,
+        engine_contract: ENGINE_CONTRACT,
+        engine_version: ENGINE_VERSION,
+        employee: employee.employee_code,
+        status: 'NON_WORKING_DAY',
+        first_in: null,
+        last_out: null,
+        worked_minutes: 0,
+        late_minutes: 0,
+        break_minutes: 0,
+        net_worked_minutes: 0,
+        explanation: ['Non-working day (company policy)'],
+        source: 'policy'
+      };
+    } else if (onLeave) {
+      record = {
+        system_version: SYSTEM_VERSION,
+        contract: ATTENDANCE_OUTPUT_CONTRACT,
+        engine_contract: ENGINE_CONTRACT,
+        engine_version: ENGINE_VERSION,
+        employee: employee.employee_code,
+        status: 'ON_LEAVE',
+        first_in: null,
+        last_out: null,
+        worked_minutes: 0,
+        late_minutes: 0,
+        break_minutes: 0,
+        net_worked_minutes: 0,
+        explanation: ['Employee on leave'],
+        source: 'policy'
+      };
+    } else {
+      record = {
+        system_version: SYSTEM_VERSION,
+        contract: ATTENDANCE_OUTPUT_CONTRACT,
+        engine_contract: ENGINE_CONTRACT,
+        engine_version: ENGINE_VERSION,
+        employee: employee.employee_code,
+        ...computedResult,
+        explanation: computedExplanation,
+        source: computedSource
+      };
+    }
+
+    record.computed = computed;
+    record.effective = {
+      status: effective.status,
+      state: effective.state,
+      source: effective.source,
+      profile: effective.profile,
+      reasons: effective.reasons
+    };
+
+    res.json(finalizeRecords([record], cacheMeta, date, companyConfig, windowMeta));
 
   } catch (err) {
     console.error(err);
