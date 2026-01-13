@@ -53,3 +53,8 @@ tools/zkteco/*.csv
 tools/zkteco/*.mdb
 tools/zkteco/*.rar
 tools/zkteco/*.zip
+
+attendance_schema*.sql
+tables.txt
+services/rules/deriveDayStatus.js
+
