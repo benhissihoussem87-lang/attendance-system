@@ -42,3 +42,6 @@ Device UID hardening migration
 Companies registry migration
 - Apply: `psql -U postgres -d attendance -f .\migrations\20260114_companies_registry.sql`
 - Verify: `SELECT * FROM companies ORDER BY company_id;`
+
+Policy layer schema migration
+- Apply: `psql -U postgres -d attendance -f .\migrations\20260115_policy_layer_schema.sql`

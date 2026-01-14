@@ -24,6 +24,20 @@ LOCKED
 
 ---
 
+## Decision 012 — DB Schema Must Be Migration-Managed
+
+**Decision**
+Any database table/column used by runtime code must be created/maintained via idempotent migrations in /migrations.
+No manual DB setup is allowed as a dependency for correctness.
+
+**Rationale**
+Prevents schema drift, ensures reproducible installs, supports long-term stability.
+
+**Status**
+LOCKED (Implemented via 20260115_policy_layer_schema.sql)
+
+---
+
 ## Decision 011 — Company Registry (Company Anchor)
 
 **Decision**
