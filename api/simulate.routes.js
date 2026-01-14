@@ -9,7 +9,10 @@ const { getCompanyConfig } = require('../services/companyConfigProvider');
 const { getUtcWindowForWorkDate } = require('../services/dayBoundaryWindow');
 const { buildComputationSignature } = require('../services/cacheSignature');
 const { resolveRuleSet } = require('../services/ruleSetProvider');
-const { getActivePolicyProfile } = require('../services/policy/policyProfileProvider');
+const {
+  getActivePolicyProfile,
+  getPolicyProfileById
+} = require('../services/policy/policyProfileProvider');
 const { evaluateEffectiveOutcome } = require('../services/policy/evaluateEffectiveOutcome');
 const { isNonWorkingDay, isOnLeave } = require('../services/policy/policyContextProvider');
 const {
@@ -57,7 +60,8 @@ router.post('/day', async (req, res) => {
       company_id,
       person_id,
       date,
-      rule_set_id
+      rule_set_id,
+      policy_profile_id
     } = req.body || {};
 
     if (!person_id) {
@@ -68,6 +72,9 @@ router.post('/day', async (req, res) => {
     }
     if (rule_set_id && !isValidUuid(rule_set_id)) {
       return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a UUID' });
+    }
+    if (policy_profile_id && !isValidUuid(policy_profile_id)) {
+      return res.status(400).json({ error: 'invalid_request', detail: 'policy_profile_id must be a UUID' });
     }
 
     const companyId = company_id || 'DEFAULT';
@@ -106,7 +113,19 @@ router.post('/day', async (req, res) => {
       throw err;
     }
 
-    const policyProfile = await getActivePolicyProfile(db, companyId);
+    let policyProfile;
+    if (policy_profile_id) {
+      const foundProfile = await getPolicyProfileById(db, policy_profile_id);
+      if (!foundProfile) {
+        return res.status(400).json({ error: 'invalid_request', detail: 'policy_profile_id not found' });
+      }
+      if (foundProfile.company_id !== companyId) {
+        return res.status(400).json({ error: 'invalid_request', detail: 'policy_profile_id does not belong to company' });
+      }
+      policyProfile = foundProfile;
+    } else {
+      policyProfile = await getActivePolicyProfile(db, companyId);
+    }
     const nonWorkingDay = await isNonWorkingDay(db, companyId, date);
     const onLeave = await isOnLeave(db, person_id, date);
 

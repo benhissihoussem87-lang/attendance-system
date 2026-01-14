@@ -23,6 +23,7 @@ app.use('/api/simulation', require('./api/simulation.routes'));
 app.use('/api/device-events', require('./api/deviceEvents.routes'));
 app.use('/api/ops', require('./api/ops.routes'));
 app.use('/api/ops/test', require('./api/opsTest.routes'));
+app.use('/api/policy-profiles', require('./api/policyProfiles.routes'));
 
 // ✅ SERVE UI (THIS WAS MISSING)
 app.use('/ui', express.static(path.join(__dirname, 'ui')));
