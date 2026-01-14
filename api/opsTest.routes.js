@@ -31,6 +31,7 @@ router.post('/reset', async (req, res) => {
   const safeDayStartTime = day_start_time || '04:00';
 
   const baseDate = new Date(`${date}T00:00:00.000Z`);
+  const baseWeekday = baseDate.getUTCDay();
   const dateMinus1 = new Date(baseDate);
   dateMinus1.setUTCDate(dateMinus1.getUTCDate() - 1);
   const datePlus1 = new Date(baseDate);
@@ -105,6 +106,14 @@ router.post('/reset', async (req, res) => {
       [person_id, datePlus1.toISOString().slice(0, 10), dateMinus1.toISOString().slice(0, 10)]
     );
 
+    await db.query(
+      `
+      DELETE FROM company_working_days
+      WHERE company_id = $1 AND weekday = $2
+      `,
+      [company_id, baseWeekday]
+    );
+
     await db.query('COMMIT');
     return res.json({ status: 'ok' });
   } catch (err) {
@@ -119,6 +128,131 @@ router.post('/reset', async (req, res) => {
       detail: err.message,
       code: err.code
     });
+  }
+});
+
+router.post('/seed-leave', async (req, res) => {
+  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const {
+    person_id,
+    date,
+    leave_type,
+    affects_attendance
+  } = req.body || {};
+
+  if (!person_id || typeof person_id !== 'string' || !person_id.trim()) {
+    return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+  }
+
+  if (!isValidDateString(date)) {
+    return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+  }
+
+  const leaveType = (typeof leave_type === 'string' && leave_type.trim())
+    ? leave_type.trim()
+    : 'TEST_LEAVE';
+  const affects = (typeof affects_attendance === 'boolean') ? affects_attendance : true;
+  const startDate = date;
+  const endDate = date;
+
+  try {
+    await db.query('BEGIN');
+
+    await db.query(
+      `
+      DELETE FROM employee_leaves
+      WHERE person_id = $1 AND $2::date BETWEEN start_date AND end_date
+      `,
+      [person_id, date]
+    );
+
+    await db.query(
+      `
+      INSERT INTO employee_leaves (person_id, start_date, end_date, leave_type, affects_attendance)
+      VALUES ($1, $2::date, $3::date, $4, $5)
+      `,
+      [person_id, startDate, endDate, leaveType, affects]
+    );
+
+    await db.query('COMMIT');
+    return res.json({
+      status: 'ok',
+      person_id: person_id.trim(),
+      start_date: startDate,
+      end_date: endDate,
+      leave_type: leaveType,
+      affects_attendance: affects
+    });
+  } catch (err) {
+    console.error(err);
+    try {
+      await db.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('SEED LEAVE FAILED:', rollbackErr);
+    }
+    return res.status(500).json({
+      error: 'seed_leave_failed',
+      code: err.code,
+      detail: err.message
+    });
+  }
+});
+
+router.post('/seed-nonworking', async (req, res) => {
+  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const {
+    company_id,
+    date
+  } = req.body || {};
+
+  const companyId = company_id || 'DEFAULT';
+  if (!isValidDateString(date)) {
+    return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+  }
+
+  const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+
+  try {
+    await db.query('BEGIN');
+
+    await db.query(
+      `
+      DELETE FROM company_working_days
+      WHERE company_id = $1 AND weekday = $2
+      `,
+      [companyId, weekday]
+    );
+
+    await db.query(
+      `
+      INSERT INTO company_working_days (company_id, weekday, is_working)
+      VALUES ($1,$2,false)
+      `,
+      [companyId, weekday]
+    );
+
+    await db.query('COMMIT');
+    return res.json({
+      status: 'ok',
+      company_id: companyId,
+      date,
+      weekday,
+      is_working: false
+    });
+  } catch (err) {
+    console.error(err);
+    try {
+      await db.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('SEED NONWORKING FAILED:', rollbackErr);
+    }
+    return res.status(500).json({ error: 'seed_nonworking_failed' });
   }
 });
 

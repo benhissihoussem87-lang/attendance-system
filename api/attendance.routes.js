@@ -430,53 +430,16 @@ router.get('/', async (req, res) => {
       };
     }
 
-    let record;
-    if (nonWorkingDay) {
-      record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        status: 'NON_WORKING_DAY',
-        first_in: null,
-        last_out: null,
-        worked_minutes: 0,
-        late_minutes: 0,
-        break_minutes: 0,
-        net_worked_minutes: 0,
-        explanation: ['Non-working day (company policy)'],
-        source: 'policy'
-      };
-    } else if (onLeave) {
-      record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        status: 'ON_LEAVE',
-        first_in: null,
-        last_out: null,
-        worked_minutes: 0,
-        late_minutes: 0,
-        break_minutes: 0,
-        net_worked_minutes: 0,
-        explanation: ['Employee on leave'],
-        source: 'policy'
-      };
-    } else {
-      record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        ...computedResult,
-        explanation: computedExplanation,
-        source: computedSource
-      };
-    }
+    const record = {
+      system_version: SYSTEM_VERSION,
+      contract: ATTENDANCE_OUTPUT_CONTRACT,
+      engine_contract: ENGINE_CONTRACT,
+      engine_version: ENGINE_VERSION,
+      employee: employee.employee_code,
+      ...computedResult,
+      explanation: computedExplanation,
+      source: computedSource
+    };
 
     record.attendance_day_id = attendanceDayId;
     record.computed = computed;
