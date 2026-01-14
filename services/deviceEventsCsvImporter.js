@@ -48,14 +48,16 @@ async function importDeviceEventsCsv(db, csvText, options = {}) {
     }
 
     try {
+      const companyId = row.data.company_id || 'DEFAULT';
       const result = await db.query(
         `
         INSERT INTO device_events
-          (person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-        VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-        ON CONFLICT ON CONSTRAINT ux_device_events_dedup DO NOTHING
+          (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+        ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
         `,
         [
+          companyId,
           row.data.person_id,
           row.data.event_time,
           row.data.direction,
@@ -66,7 +68,9 @@ async function importDeviceEventsCsv(db, csvText, options = {}) {
       );
 
       if (result.rowCount === 1) {
-        await invalidateAttendanceCache(db, row.data.person_id, row.data.event_time);
+        await invalidateAttendanceCache(db, row.data.person_id, row.data.event_time, {
+          companyId
+        });
         inserted_rows += 1;
       }
     } catch (err) {

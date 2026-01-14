@@ -20,7 +20,9 @@ $scriptList = @(
   'attendance\manual_resolution_overlay.ps1',
   'device_events\device_identity_required.ps1',
   'rulesets\db_ruleset_selection.ps1',
-  'rulesets\simulation_no_persist.ps1'
+  'rulesets\simulation_no_persist.ps1',
+  'rulesets\simulation_range_no_persist.ps1',
+  'rulesets\simulation_late_threshold_whatif.ps1'
 )
 
 foreach ($script in $scriptList) {

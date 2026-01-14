@@ -33,7 +33,7 @@ Required DB tables
 - attendance_days
 
 Dedup constraint
-- device_events must have unique constraint named `ux_device_events_dedup`
+- device_events must have unique constraint named `device_events_dedup_company_uk`
 
 Device UID hardening migration
 - Apply: `psql -d <db> -f migrations/20260114_device_uid_hardening.sql`
@@ -45,3 +45,7 @@ Companies registry migration
 
 Policy layer schema migration
 - Apply: `psql -U postgres -d attendance -f .\migrations\20260115_policy_layer_schema.sql`
+
+Tenant scope migration
+- Apply: `psql -U postgres -d attendance -f .\migrations\20260116_tenant_scope_core_tables.sql`
+- Note: company_id defaults to DEFAULT when omitted

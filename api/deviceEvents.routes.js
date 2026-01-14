@@ -59,6 +59,7 @@ function getVendor(req) {
 router.post('/', async (req, res) => {
   try {
     const {
+      company_id,
       person_id,
       event_time_utc,
       direction,
@@ -94,13 +95,16 @@ router.post('/', async (req, res) => {
       throw err;
     }
 
+    const companyId = company_id || 'DEFAULT';
+
     await db.query(
       `
       INSERT INTO device_events
-        (person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-      VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+        (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
       `,
       [
+        companyId,
         person_id,
         event_time_utc,
         direction,
@@ -110,7 +114,7 @@ router.post('/', async (req, res) => {
       ]
     );
 
-    await invalidateAttendanceCache(db, person_id, event_time_utc);
+    await invalidateAttendanceCache(db, person_id, event_time_utc, { companyId });
 
     res.status(201).json({ status: 'ok' });
   } catch (err) {
@@ -265,6 +269,7 @@ router.post(
       req.body instanceof Buffer
         ? req.body.toString('utf8')
         : '';
+    const companyId = req.query.company_id || req.get('x-company-id') || 'DEFAULT';
 
     if (!csvText.trim()) {
       return res.status(400).json({ error: 'CSV content is required' });
@@ -332,7 +337,9 @@ router.post(
           continue;
         }
 
+        const companyId = normalized.company_id || 'DEFAULT';
         const values = [
+          companyId,
           normalized.person_id,
           normalized.event_time_utc,
           normalized.direction,
@@ -346,9 +353,9 @@ router.post(
           result = await db.query(
             `
             INSERT INTO device_events
-              (person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-            VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-            ON CONFLICT (person_id, event_time_utc, direction, device_uid) DO NOTHING
+              (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
+            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+            ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
             RETURNING person_id, event_time_utc, direction, device_uid, vendor
             `,
             values
@@ -378,7 +385,9 @@ router.post(
         if (result.rowCount === 1) {
           inserted_rows += 1;
           try {
-            await invalidateAttendanceCache(db, normalized.person_id, normalized.event_time_utc);
+            await invalidateAttendanceCache(db, normalized.person_id, normalized.event_time_utc, {
+              companyId
+            });
           } catch (cacheErr) {
             if (errors.length < 200) {
               errors.push({
@@ -528,7 +537,9 @@ router.post(
         continue;
       }
 
+      const companyId = canonical.company_id || 'DEFAULT';
       const values = [
+        companyId,
         canonical.person_id,
         canonical.event_time_utc,
         canonical.direction,
@@ -542,9 +553,9 @@ router.post(
         result = await db.query(
           `
           INSERT INTO device_events
-            (person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-          VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-          ON CONFLICT (person_id, event_time_utc, direction, device_uid) DO NOTHING
+            (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+          ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
           RETURNING person_id, event_time_utc, direction, device_uid, vendor
           `,
           values
@@ -574,7 +585,9 @@ router.post(
       if (result.rowCount === 1) {
         inserted_rows += 1;
         try {
-          await invalidateAttendanceCache(db, canonical.person_id, canonical.event_time_utc);
+          await invalidateAttendanceCache(db, canonical.person_id, canonical.event_time_utc, {
+            companyId
+          });
         } catch (cacheErr) {
           if (errors.length < 200) {
             errors.push({

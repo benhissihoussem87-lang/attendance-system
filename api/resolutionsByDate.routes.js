@@ -54,9 +54,9 @@ router.post('/', async (req, res) => {
     const attendanceDayRes = await db.query(`
       SELECT id
       FROM attendance_days
-      WHERE person_id = $1 AND work_date = $2
+      WHERE company_id = $1 AND person_id = $2 AND work_date = $3
       LIMIT 1
-    `, [person_id.trim(), date]);
+    `, [company_id.trim(), person_id.trim(), date]);
 
     if (attendanceDayRes.rows.length === 0) {
       return res.status(404).json({
@@ -84,6 +84,9 @@ router.post('/', async (req, res) => {
 });
 
 router.get('/', async (req, res) => {
+  const companyId = isNonEmptyString(req.query.company_id)
+    ? req.query.company_id.trim()
+    : 'DEFAULT';
   const personId = req.query.person_id;
   const date = req.query.date;
 
@@ -98,9 +101,9 @@ router.get('/', async (req, res) => {
     const attendanceDayRes = await db.query(`
       SELECT id
       FROM attendance_days
-      WHERE person_id = $1 AND work_date = $2
+      WHERE company_id = $1 AND person_id = $2 AND work_date = $3
       LIMIT 1
-    `, [personId.trim(), date]);
+    `, [companyId, personId.trim(), date]);
 
     if (attendanceDayRes.rows.length === 0) {
       return res.status(404).json({

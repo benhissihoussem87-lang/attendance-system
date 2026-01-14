@@ -24,11 +24,13 @@ function toDateStringUtc(date) {
  */
 router.post('/run', async (req, res) => {
   const {
+    company_id,
     person_id,
     start_date,
     end_date,
     alternate_rule_set
   } = req.body;
+  const companyId = company_id || 'DEFAULT';
 
   const baselineRes = await db.query(`
     SELECT
@@ -37,10 +39,11 @@ router.post('/run', async (req, res) => {
       worked_minutes,
       late_minutes
     FROM attendance_days
-    WHERE person_id = $1
-      AND work_date BETWEEN $2 AND $3
+    WHERE company_id = $1
+      AND person_id = $2
+      AND work_date BETWEEN $3 AND $4
     ORDER BY work_date
-  `, [person_id, start_date, end_date]);
+  `, [companyId, person_id, start_date, end_date]);
 
   const baselineByDate = {};
   baselineRes.rows.forEach(row => {
@@ -50,10 +53,11 @@ router.post('/run', async (req, res) => {
   const eventsRes = await db.query(`
     SELECT person_id, event_time_utc, direction
     FROM device_events
-    WHERE person_id = $1
-      AND event_time_utc::date BETWEEN $2 AND $3
+    WHERE company_id = $1
+      AND person_id = $2
+      AND event_time_utc::date BETWEEN $3 AND $4
     ORDER BY event_time_utc
-  `, [person_id, start_date, end_date]);
+  `, [companyId, person_id, start_date, end_date]);
 
   const eventsByDate = {};
   eventsRes.rows.forEach(e => {

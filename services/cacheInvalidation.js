@@ -32,10 +32,11 @@ async function invalidateAttendanceCache(db, personId, eventTimeUtc, opts = {}) 
   await db.query(
     `
     DELETE FROM attendance_days
-    WHERE person_id = $1
-      AND work_date = ANY($2::date[])
+    WHERE company_id = $1
+      AND person_id = $2
+      AND work_date = ANY($3::date[])
     `,
-    [personId, dates]
+    [companyId, personId, dates]
   );
 }
 

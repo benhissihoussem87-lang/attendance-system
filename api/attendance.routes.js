@@ -124,7 +124,7 @@ router.get('/', async (req, res) => {
     const personIdParam = req.query.person_id;
     const usedDefaultPerson = !personIdParam;
     const personId = personIdParam || employee.person_id;
-    const companyId = employee.company_id || 'DEFAULT';
+    const companyId = req.query.company_id || req.get('x-company-id') || 'DEFAULT';
     const ruleSetIdParam = req.query.rule_set_id;
     const ruleSetIdRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (ruleSetIdParam && !ruleSetIdRegex.test(ruleSetIdParam)) {
@@ -164,7 +164,7 @@ router.get('/', async (req, res) => {
 
     const policyProfile = await getActivePolicyProfile(db, companyId);
     const nonWorkingDay = await isNonWorkingDay(db, companyId, date);
-    const onLeave = await isOnLeave(db, personId, date);
+    const onLeave = await isOnLeave(db, companyId, personId, date);
     let ruleSetSelection;
     let selectedRuleSet;
 
@@ -199,8 +199,8 @@ router.get('/', async (req, res) => {
         late_minutes,
         explanation
       FROM attendance_days
-      WHERE person_id = $1 AND work_date = $2
-    `, [personId, date]);
+      WHERE company_id = $1 AND person_id = $2 AND work_date = $3
+    `, [companyId, personId, date]);
 
     if (cached.rows.length > 0) {
       const cachedRow = cached.rows[0];
@@ -275,18 +275,20 @@ router.get('/', async (req, res) => {
     if (!computedResult) {
       // 2: Load facts from device_events
       const eventsRes = await db.query(`
-        SELECT person_id, event_time_utc, direction
+        SELECT person_id, event_time_utc, direction, device_uid
         FROM device_events
-        WHERE person_id = $1
-          AND event_time_utc >= $2
-          AND event_time_utc < $3
+        WHERE company_id = $1
+          AND person_id = $2
+          AND event_time_utc >= $3
+          AND event_time_utc < $4
         ORDER BY event_time_utc
-      `, [personId, windowStartUtc, windowEndUtc]);
+      `, [companyId, personId, windowStartUtc, windowEndUtc]);
 
       const dayEvents = eventsRes.rows.map(e => ({
         person_id: e.person_id,
         event_time: e.event_time_utc,
-        direction: e.direction
+        direction: e.direction,
+        device_uid: e.device_uid
       }));
 
       // 3: Compute with engine (IMPORTANT: before any use of result)
@@ -316,10 +318,10 @@ router.get('/', async (req, res) => {
       if (ruleSetSelection && ruleSetSelection.source === 'db') {
         inserted = await db.query(`
           INSERT INTO attendance_days
-            (person_id, work_date, status, first_in_utc, last_out_utc,
+            (company_id, person_id, work_date, status, first_in_utc, last_out_utc,
              worked_minutes, late_minutes, explanation, rule_set_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-          ON CONFLICT (person_id, work_date)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          ON CONFLICT (company_id, person_id, work_date)
           DO UPDATE SET
             status = EXCLUDED.status,
             first_in_utc = EXCLUDED.first_in_utc,
@@ -331,6 +333,7 @@ router.get('/', async (req, res) => {
             computed_at = now()
           RETURNING id
         `, [
+          companyId,
           personId,
           date,
           result.status,
@@ -344,10 +347,10 @@ router.get('/', async (req, res) => {
       } else {
         inserted = await db.query(`
           INSERT INTO attendance_days
-            (person_id, work_date, status, first_in_utc, last_out_utc,
+            (company_id, person_id, work_date, status, first_in_utc, last_out_utc,
              worked_minutes, late_minutes, explanation)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-          ON CONFLICT (person_id, work_date)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ON CONFLICT (company_id, person_id, work_date)
           DO UPDATE SET
             status = EXCLUDED.status,
             first_in_utc = EXCLUDED.first_in_utc,
@@ -358,6 +361,7 @@ router.get('/', async (req, res) => {
             computed_at = now()
           RETURNING id
         `, [
+          companyId,
           personId,
           date,
           result.status,
@@ -421,12 +425,30 @@ router.get('/', async (req, res) => {
     };
 
     if (activeResolution && activeResolution.action !== 'AUTO_POLICY') {
+      const resolutionPayload = {
+        id: activeResolution.id,
+        decided_by: activeResolution.decided_by,
+        decided_at: activeResolution.decided_at,
+        action: activeResolution.action,
+        effective_status: activeResolution.effective_status,
+        override: activeResolution.override,
+        reason_code: activeResolution.reason_code,
+        note: activeResolution.note
+      };
+      const reasons = Array.isArray(effectiveOutput.reasons)
+        ? [...effectiveOutput.reasons]
+        : [];
+      if (activeResolution.reason_code && !reasons.includes(activeResolution.reason_code)) {
+        reasons.push(activeResolution.reason_code);
+      }
+
       effectiveOutput = {
+        ...effectiveOutput,
         status: activeResolution.effective_status,
         state: 'APPROVED',
         source: 'MANUAL_RESOLUTION',
-        profile: effective.profile,
-        reasons: activeResolution.reason_code ? [activeResolution.reason_code] : []
+        reasons,
+        resolution: resolutionPayload
       };
     }
 

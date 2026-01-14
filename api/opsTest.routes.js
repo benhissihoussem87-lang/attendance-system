@@ -26,6 +26,7 @@ router.post('/reset', async (req, res) => {
     events = []
   } = req.body || {};
 
+  const companyId = company_id || 'DEFAULT';
   const safeCompanyTimezone = company_timezone || 'Africa/Tunis';
   const safeNightShiftEnabled = typeof night_shift_enabled === 'boolean' ? night_shift_enabled : false;
   const safeDayStartTime = day_start_time || '04:00';
@@ -54,28 +55,30 @@ router.post('/reset', async (req, res) => {
         day_start_time = EXCLUDED.day_start_time,
         updated_at = NOW()
       `,
-      [company_id, safeCompanyTimezone, safeNightShiftEnabled, safeDayStartTime]
+      [companyId, safeCompanyTimezone, safeNightShiftEnabled, safeDayStartTime]
     );
 
     await db.query(
       `
       DELETE FROM device_events
-      WHERE person_id = $1
-        AND event_time_utc >= $2
-        AND event_time_utc < $3
+      WHERE company_id = $1
+        AND person_id = $2
+        AND event_time_utc >= $3
+        AND event_time_utc < $4
       `,
-      [person_id, dateMinus1.toISOString(), datePlus2.toISOString()]
+      [companyId, person_id, dateMinus1.toISOString(), datePlus2.toISOString()]
     );
 
     for (const event of events) {
       await db.query(
         `
         INSERT INTO device_events
-          (person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-        VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-        ON CONFLICT ON CONSTRAINT ux_device_events_dedup DO NOTHING
+          (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+        ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
         `,
         [
+          companyId,
           person_id,
           event.event_time_utc,
           event.direction,
@@ -91,19 +94,22 @@ router.post('/reset', async (req, res) => {
     await db.query(
       `
       DELETE FROM attendance_days
-      WHERE person_id = $1 AND work_date IN ($2, $3, $4)
+      WHERE company_id = $1
+        AND person_id = $2
+        AND work_date IN ($3, $4, $5)
       `,
-      [person_id, dateMinus1.toISOString().slice(0, 10), date, datePlus1.toISOString().slice(0, 10)]
+      [companyId, person_id, dateMinus1.toISOString().slice(0, 10), date, datePlus1.toISOString().slice(0, 10)]
     );
 
     await db.query(
       `
       DELETE FROM employee_leaves
-      WHERE person_id = $1
-        AND start_date <= $2
-        AND end_date >= $3
+      WHERE company_id = $1
+        AND person_id = $2
+        AND start_date <= $3
+        AND end_date >= $4
       `,
-      [person_id, datePlus1.toISOString().slice(0, 10), dateMinus1.toISOString().slice(0, 10)]
+      [companyId, person_id, datePlus1.toISOString().slice(0, 10), dateMinus1.toISOString().slice(0, 10)]
     );
 
     await db.query(
@@ -111,7 +117,7 @@ router.post('/reset', async (req, res) => {
       DELETE FROM company_working_days
       WHERE company_id = $1 AND weekday = $2
       `,
-      [company_id, baseWeekday]
+      [companyId, baseWeekday]
     );
 
     await db.query('COMMIT');
@@ -137,6 +143,7 @@ router.post('/seed-leave', async (req, res) => {
   }
 
   const {
+    company_id,
     person_id,
     date,
     leave_type,
@@ -161,25 +168,29 @@ router.post('/seed-leave', async (req, res) => {
   try {
     await db.query('BEGIN');
 
+    const companyId = company_id || 'DEFAULT';
     await db.query(
       `
       DELETE FROM employee_leaves
-      WHERE person_id = $1 AND $2::date BETWEEN start_date AND end_date
+      WHERE company_id = $1
+        AND person_id = $2
+        AND $3::date BETWEEN start_date AND end_date
       `,
-      [person_id, date]
+      [companyId, person_id, date]
     );
 
     await db.query(
       `
-      INSERT INTO employee_leaves (person_id, start_date, end_date, leave_type, affects_attendance)
-      VALUES ($1, $2::date, $3::date, $4, $5)
+      INSERT INTO employee_leaves (company_id, person_id, start_date, end_date, leave_type, affects_attendance)
+      VALUES ($1, $2, $3::date, $4::date, $5, $6)
       `,
-      [person_id, startDate, endDate, leaveType, affects]
+      [companyId, person_id, startDate, endDate, leaveType, affects]
     );
 
     await db.query('COMMIT');
     return res.json({
       status: 'ok',
+      company_id: companyId,
       person_id: person_id.trim(),
       start_date: startDate,
       end_date: endDate,
@@ -261,6 +272,7 @@ router.get('/attendance-days/count', async (req, res) => {
     return res.status(404).json({ error: 'Not found' });
   }
 
+  const companyId = req.query.company_id || 'DEFAULT';
   const personId = req.query.person_id;
   const workDate = req.query.work_date;
 
@@ -275,8 +287,8 @@ router.get('/attendance-days/count', async (req, res) => {
     const result = await db.query(`
       SELECT COUNT(*)::int AS n
       FROM attendance_days
-      WHERE person_id = $1 AND work_date = $2
-    `, [personId, workDate]);
+      WHERE company_id = $1 AND person_id = $2 AND work_date = $3
+    `, [companyId, personId, workDate]);
     return res.json({ count: result.rows[0].n });
   } catch (err) {
     console.error(err);

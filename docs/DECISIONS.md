@@ -24,7 +24,19 @@ LOCKED
 
 ---
 
-## Decision 012 — DB Schema Must Be Migration-Managed
+## Decision 012 — Tenant scoping of core facts (company_id required)
+
+**Decision**
+- company_id is required at the storage boundary for device_events, attendance_days, and employee_leaves.
+- Default remains DEFAULT for backward compatibility when company_id is omitted.
+- Deduplication and cache keys are tenant-scoped.
+
+**Status**
+LOCKED
+
+---
+
+## Decision 013 — DB Schema Must Be Migration-Managed
 
 **Decision**
 Any database table/column used by runtime code must be created/maintained via idempotent migrations in /migrations.

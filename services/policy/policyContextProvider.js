@@ -14,14 +14,15 @@ async function isNonWorkingDay(db, companyId, workDate) {
   return res.rows[0].is_working !== true;
 }
 
-async function isOnLeave(db, personId, workDate) {
+async function isOnLeave(db, companyId, personId, workDate) {
   const res = await db.query(`
     SELECT 1
     FROM employee_leaves
-    WHERE person_id = $1
-      AND $2 BETWEEN start_date AND end_date
+    WHERE company_id = $1
+      AND person_id = $2
+      AND $3 BETWEEN start_date AND end_date
     LIMIT 1
-  `, [personId, workDate]);
+  `, [companyId, personId, workDate]);
 
   return res.rows.length > 0;
 }

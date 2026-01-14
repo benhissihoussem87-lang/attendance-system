@@ -48,6 +48,16 @@ function addFlag(ctx, flag) {
   }
 }
 
+function isLateByThreshold(ctx) {
+  const rawLate = typeof ctx.metrics.raw_late_minutes === 'number'
+    ? ctx.metrics.raw_late_minutes
+    : ctx.metrics.late_minutes;
+  const threshold = typeof ctx.thresholds.late_threshold_minutes === 'number'
+    ? ctx.thresholds.late_threshold_minutes
+    : 0;
+  return rawLate > threshold;
+}
+
 module.exports = function decideStatus(ctx) {
   if (ctx.invalid) {
     ctx.decision.reason_code = 'INVALID_CONTEXT';
@@ -78,7 +88,7 @@ module.exports = function decideStatus(ctx) {
     ctx.decision.status = 'INCOMPLETE';
     ctx.decision.reason_code = derived.flags[0];
     addFlag(ctx, derived.flags[0]);
-    if (ctx.metrics.late_minutes > 0) {
+    if (isLateByThreshold(ctx)) {
       addFlag(ctx, 'LATE');
     }
     ctx.explanation.push('Derived completeness: incomplete day -> INCOMPLETE');
@@ -90,7 +100,7 @@ module.exports = function decideStatus(ctx) {
     const rule = rules[index];
 
     if (rule.type === 'STATUS_BY_LATE') {
-      if (ctx.metrics.late_minutes > 0) {
+      if (isLateByThreshold(ctx)) {
         ctx.decision.status = 'PRESENT';
         ctx.decision.reason_code = 'LATE_ARRIVAL';
         addFlag(ctx, 'LATE');
