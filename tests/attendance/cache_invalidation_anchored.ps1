@@ -28,7 +28,7 @@ Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -ContentType "applic
   person_id="p1"
   event_time_utc="2026-01-07T02:00:00.000Z"
   direction="IN"
-  device_uid=""
+  device_uid = 'TEST-DEVICE-1'
   vendor=$null
   raw_payload=@{}
 } | ConvertTo-Json -Depth 6) | Out-Null
@@ -41,3 +41,4 @@ if ($rAfter.source -eq "db" -and $rAfter.cache_valid -eq $true -and ($rAfter.cac
 }
 
 "PASS: cache invalidation anchored"
+

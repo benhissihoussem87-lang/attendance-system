@@ -9,6 +9,7 @@ const { buildErrorIntelligence } = require('../services/csvErrorIntelligence');
 const { buildErrorsCsv } = require('../services/csvErrorExport');
 const { normalizeCanonicalEvent } = require('../contracts/deviceEventContract');
 const { validateCanonicalEvent } = require('../services/validators/deviceEventValidator');
+const { requireDeviceUid } = require('../services/validators/deviceIdentity');
 const { COMPANY_TIMEZONE } = require('../config/timezone');
 const {
   interpretEventTime,
@@ -83,6 +84,16 @@ router.post('/', async (req, res) => {
       }
     }
 
+    let sanitizedDeviceUid;
+    try {
+      sanitizedDeviceUid = requireDeviceUid(device_uid);
+    } catch (err) {
+      if (err.code === 'DEVICE_ID_REQUIRED') {
+        return res.status(400).json({ error: 'DEVICE_ID_REQUIRED' });
+      }
+      throw err;
+    }
+
     await db.query(
       `
       INSERT INTO device_events
@@ -94,7 +105,7 @@ router.post('/', async (req, res) => {
         event_time_utc,
         direction,
         vendor,
-        device_uid,
+        sanitizedDeviceUid,
         parsedPayload
       ]
     );
@@ -307,6 +318,19 @@ router.post(
           failed_rows += 1;
           continue;
         }
+        try {
+          normalized.device_uid = requireDeviceUid(normalized.device_uid);
+        } catch (err) {
+          if (errors.length < 200) {
+            errors.push({
+              row_number: row.row_number,
+              code: 'MISSING_DEVICE_UID',
+              message: 'device_uid is required'
+            });
+          }
+          failed_rows += 1;
+          continue;
+        }
 
         const values = [
           normalized.person_id,
@@ -490,6 +514,19 @@ router.post(
         continue;
       }
       const canonical = ingestResult.okRows[0];
+      try {
+        canonical.device_uid = requireDeviceUid(canonical.device_uid);
+      } catch (err) {
+        if (errors.length < 200) {
+          errors.push({
+            row_number: row.row_number,
+            code: 'MISSING_DEVICE_UID',
+            message: 'device_uid is required'
+          });
+        }
+        failed_rows += 1;
+        continue;
+      }
 
       const values = [
         canonical.person_id,

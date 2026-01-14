@@ -18,6 +18,7 @@ app.use('/api/employees', require('./api/employees.routes'));
 app.use('/api/rule-sets', require('./api/ruleSets.routes'));
 app.use('/api/attendance', require('./api/attendance.routes'));
 app.use('/api', require('./api/resolutions.routes'));
+app.use('/api/simulate', require('./api/simulate.routes'));
 app.use('/api/simulation', require('./api/simulation.routes'));
 app.use('/api/device-events', require('./api/deviceEvents.routes'));
 app.use('/api/ops', require('./api/ops.routes'));

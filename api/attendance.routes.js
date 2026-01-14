@@ -17,6 +17,7 @@ const {
   buildComputationSignature,
   isSignatureCompatible
 } = require('../services/cacheSignature');
+const { resolveRuleSet } = require('../services/ruleSetProvider');
 const {
   ENGINE_VERSION,
   ENGINE_CONTRACT,
@@ -90,6 +91,7 @@ function finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta) {
 function buildComputedPayload(data, signature) {
   return {
     status: data.status,
+    rule_set_id: data.rule_set_id || null,
     flags: Array.isArray(data.flags) ? data.flags : [],
     metrics: {
       worked_minutes: data.worked_minutes ?? null,
@@ -123,6 +125,11 @@ router.get('/', async (req, res) => {
     const usedDefaultPerson = !personIdParam;
     const personId = personIdParam || employee.person_id;
     const companyId = employee.company_id || 'DEFAULT';
+    const ruleSetIdParam = req.query.rule_set_id;
+    const ruleSetIdRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (ruleSetIdParam && !ruleSetIdRegex.test(ruleSetIdParam)) {
+      return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a UUID' });
+    }
     const companyConfig = await getCompanyConfig(db, companyId);
     const signature = buildComputationSignature(companyConfig, {
       use_derived_work_date: USE_DERIVED_WORK_DATE
@@ -158,6 +165,22 @@ router.get('/', async (req, res) => {
     const policyProfile = await getActivePolicyProfile(db, companyId);
     const nonWorkingDay = await isNonWorkingDay(db, companyId, date);
     const onLeave = await isOnLeave(db, personId, date);
+    let ruleSetSelection;
+    let selectedRuleSet;
+
+    try {
+      const resolved = await resolveRuleSet(db, {
+        rule_set_id: ruleSetIdParam,
+        fallbackRuleSet: ruleSets[employee.rule_set_id]
+      });
+      selectedRuleSet = resolved.ruleSet;
+      ruleSetSelection = resolved.meta;
+    } catch (err) {
+      if (err.code === 'RULE_SET_NOT_FOUND') {
+        return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id not found' });
+      }
+      throw err;
+    }
 
     let computedResult = null;
     let computedSource = null;
@@ -168,6 +191,7 @@ router.get('/', async (req, res) => {
     const cached = await db.query(`
       SELECT
         id,
+        rule_set_id,
         status,
         first_in_utc AS first_in,
         last_out_utc AS last_out,
@@ -227,6 +251,12 @@ router.get('/', async (req, res) => {
           ? parsedExplanation.explanation
           : cachedRow.explanation;
         const { id: cachedId, ...cachedData } = cachedRow;
+        if (ruleSetIdParam && cachedRow.rule_set_id !== ruleSetIdParam) {
+          cacheMeta = {
+            cache_valid: false,
+            cache_reason: 'rule_set_mismatch'
+          };
+        } else {
         attendanceDayId = cachedId;
         computedExplanation = explanationOut;
         computedResult = {
@@ -234,6 +264,7 @@ router.get('/', async (req, res) => {
           explanation: explanationOut
         };
         computedSource = 'db';
+        }
       }
     }
 
@@ -263,9 +294,12 @@ router.get('/', async (req, res) => {
         person: employee,
         date,
         events: dayEvents,
-        ruleSet: ruleSets[employee.rule_set_id]
+        ruleSet: selectedRuleSet
       });
 
+      if (ruleSetSelection && ruleSetSelection.source === 'db') {
+        result.rule_set_id = ruleSetSelection.rule_set_id;
+      }
       computedResult = result;
       computedSource = 'engine';
       computedExplanation = result.explanation;
@@ -273,33 +307,67 @@ router.get('/', async (req, res) => {
       // 4: Save result to DB
       const explanationPayload = {
         explanation: result.explanation,
-        computation_context: signature
+        computation_context: {
+          ...signature,
+          rule_set_selection: ruleSetSelection
+        }
       };
-      const inserted = await db.query(`
-        INSERT INTO attendance_days
-          (person_id, work_date, status, first_in_utc, last_out_utc,
-           worked_minutes, late_minutes, explanation)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        ON CONFLICT (person_id, work_date)
-        DO UPDATE SET
-          status = EXCLUDED.status,
-          first_in_utc = EXCLUDED.first_in_utc,
-          last_out_utc = EXCLUDED.last_out_utc,
-          worked_minutes = EXCLUDED.worked_minutes,
-          late_minutes = EXCLUDED.late_minutes,
-          explanation = EXCLUDED.explanation,
-          computed_at = now()
-        RETURNING id
-      `, [
-        personId,
-        date,
-        result.status,
-        result.first_in,
-        result.last_out,
-        result.worked_minutes,
-        result.late_minutes,
-        JSON.stringify(explanationPayload)
-      ]);
+      let inserted;
+      if (ruleSetSelection && ruleSetSelection.source === 'db') {
+        inserted = await db.query(`
+          INSERT INTO attendance_days
+            (person_id, work_date, status, first_in_utc, last_out_utc,
+             worked_minutes, late_minutes, explanation, rule_set_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          ON CONFLICT (person_id, work_date)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            first_in_utc = EXCLUDED.first_in_utc,
+            last_out_utc = EXCLUDED.last_out_utc,
+            worked_minutes = EXCLUDED.worked_minutes,
+            late_minutes = EXCLUDED.late_minutes,
+            explanation = EXCLUDED.explanation,
+            rule_set_id = EXCLUDED.rule_set_id,
+            computed_at = now()
+          RETURNING id
+        `, [
+          personId,
+          date,
+          result.status,
+          result.first_in,
+          result.last_out,
+          result.worked_minutes,
+          result.late_minutes,
+          JSON.stringify(explanationPayload),
+          ruleSetSelection.rule_set_id
+        ]);
+      } else {
+        inserted = await db.query(`
+          INSERT INTO attendance_days
+            (person_id, work_date, status, first_in_utc, last_out_utc,
+             worked_minutes, late_minutes, explanation)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          ON CONFLICT (person_id, work_date)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            first_in_utc = EXCLUDED.first_in_utc,
+            last_out_utc = EXCLUDED.last_out_utc,
+            worked_minutes = EXCLUDED.worked_minutes,
+            late_minutes = EXCLUDED.late_minutes,
+            explanation = EXCLUDED.explanation,
+            computed_at = now()
+          RETURNING id
+        `, [
+          personId,
+          date,
+          result.status,
+          result.first_in,
+          result.last_out,
+          result.worked_minutes,
+          result.late_minutes,
+          JSON.stringify(explanationPayload)
+        ]);
+      }
 
       attendanceDayId = inserted.rows[0].id;
     }
@@ -307,12 +375,16 @@ router.get('/', async (req, res) => {
     const computed = buildComputedPayload({
       status: computedResult.status,
       flags: computedResult.flags,
+      rule_set_id: computedResult.rule_set_id,
       worked_minutes: computedResult.worked_minutes,
       late_minutes: computedResult.late_minutes,
       break_minutes: computedResult.break_minutes,
       net_worked_minutes: computedResult.net_worked_minutes,
       explanation: computedExplanation
-    }, signature);
+    }, {
+      ...signature,
+      rule_set_selection: ruleSetSelection
+    });
 
     const effective = evaluateEffectiveOutcome({
       company_id: companyId,

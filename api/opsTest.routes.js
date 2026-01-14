@@ -3,6 +3,14 @@ const router = express.Router();
 
 const db = require('../db');
 
+function isValidDateString(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime());
+}
+
 router.post('/reset', async (req, res) => {
   if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
     return res.status(404).json({ error: 'Not found' });
@@ -71,7 +79,9 @@ router.post('/reset', async (req, res) => {
           event.event_time_utc,
           event.direction,
           event.vendor || null,
-          event.device_uid ?? '',
+          event.device_uid && String(event.device_uid).trim()
+            ? String(event.device_uid).trim()
+            : 'TEST-DEVICE-1',
           event.raw_payload || {}
         ]
       );
@@ -109,6 +119,105 @@ router.post('/reset', async (req, res) => {
       detail: err.message,
       code: err.code
     });
+  }
+});
+
+router.get('/attendance-days/count', async (req, res) => {
+  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const personId = req.query.person_id;
+  const workDate = req.query.work_date;
+
+  if (!personId || typeof personId !== 'string') {
+    return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+  }
+  if (!isValidDateString(workDate)) {
+    return res.status(400).json({ error: 'invalid_request', detail: 'work_date must be YYYY-MM-DD' });
+  }
+
+  try {
+    const result = await db.query(`
+      SELECT COUNT(*)::int AS n
+      FROM attendance_days
+      WHERE person_id = $1 AND work_date = $2
+    `, [personId, workDate]);
+    return res.json({ count: result.rows[0].n });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'attendance_days_count_failed' });
+  }
+});
+
+router.post('/seed-ruleset', async (req, res) => {
+  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const {
+    name,
+    version,
+    rules = []
+  } = req.body || {};
+
+  if (!name || typeof name !== 'string') {
+    return res.status(400).json({ error: 'invalid_request', detail: 'name is required' });
+  }
+  if (!Number.isInteger(version)) {
+    return res.status(400).json({ error: 'invalid_request', detail: 'version must be an integer' });
+  }
+  if (!Array.isArray(rules)) {
+    return res.status(400).json({ error: 'invalid_request', detail: 'rules must be an array' });
+  }
+
+  try {
+    await db.query('BEGIN');
+
+    const existing = await db.query(`
+      SELECT id
+      FROM rule_sets
+      WHERE name = $1 AND version = $2
+      LIMIT 1
+    `, [name, version]);
+
+    let ruleSetId = null;
+    if (existing.rows.length > 0) {
+      ruleSetId = existing.rows[0].id;
+      await db.query('DELETE FROM rules WHERE rule_set_id = $1', [ruleSetId]);
+    } else {
+      const inserted = await db.query(`
+        INSERT INTO rule_sets (name, version)
+        VALUES ($1, $2)
+        RETURNING id
+      `, [name, version]);
+      ruleSetId = inserted.rows[0].id;
+    }
+
+    for (let i = 0; i < rules.length; i += 1) {
+      const rule = rules[i];
+      if (!rule || !rule.type) {
+        await db.query('ROLLBACK');
+        return res.status(400).json({ error: 'invalid_request', detail: 'rule.type is required' });
+      }
+      const { type, params, ...rest } = rule;
+      const payload = params && typeof params === 'object' ? params : rest;
+      await db.query(`
+        INSERT INTO rules (rule_set_id, type, params, order_index)
+        VALUES ($1,$2,$3::jsonb,$4)
+      `, [ruleSetId, type, JSON.stringify(payload || {}), i]);
+    }
+
+    await db.query('COMMIT');
+    return res.json({ rule_set_id: ruleSetId });
+  } catch (err) {
+    console.error(err);
+    try {
+      await db.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('SEED RULESET FAILED:', rollbackErr);
+    }
+    return res.status(500).json({ error: 'seed_ruleset_failed' });
   }
 });
 

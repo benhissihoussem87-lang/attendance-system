@@ -61,8 +61,8 @@ try {
     person_id = 'p1'
     date = $date
     events = @(
-      @{ event_time_utc = '2026-01-07T06:00:00.000Z'; direction = 'IN'; device_uid = '' },
-      @{ event_time_utc = '2026-01-07T16:00:00.000Z'; direction = 'OUT'; device_uid = '' }
+      @{ event_time_utc = '2026-01-07T06:00:00.000Z'; direction = 'IN'; device_uid = 'TEST-DEVICE-1' },
+      @{ event_time_utc = '2026-01-07T16:00:00.000Z'; direction = 'OUT'; device_uid = 'TEST-DEVICE-1' }
     )
   }
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
@@ -102,3 +102,4 @@ try {
   Write-Host $_
   exit 1
 }
+

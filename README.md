@@ -34,3 +34,7 @@ Required DB tables
 
 Dedup constraint
 - device_events must have unique constraint named `ux_device_events_dedup`
+
+Device UID hardening migration
+- Apply: `psql -d <db> -f migrations/20260114_device_uid_hardening.sql`
+- Follow-up after cleanup: `ALTER TABLE device_events VALIDATE CONSTRAINT device_events_device_uid_nonempty;`

@@ -1,3 +1,5 @@
+const { deriveDayStatus } = require('../deriveDayStatus');
+
 function invalidResult(message) {
   return {
     status: 'INVALID',
@@ -55,11 +57,31 @@ module.exports = function decideStatus(ctx) {
 
   const rules = ctx.ruleSet?.rules || [];
 
-  if (!ctx.timeline.inEvent) {
-    const ruleType = firstStatusRuleType(rules);
+  const firstIn = ctx.timeline.inEvent ? ctx.timeline.inEvent.event_time : null;
+  const lastOut = ctx.timeline.outEvent ? ctx.timeline.outEvent.event_time : null;
+  const derived = deriveDayStatus({
+    events: ctx.events || [],
+    first_in_utc: firstIn,
+    last_out_utc: lastOut
+  });
+
+  if (derived.status === 'ABSENT') {
     ctx.decision.status = 'ABSENT';
     ctx.decision.reason_code = 'NO_EVENTS';
-    ctx.explanation.push(ruleType + ': no arrival event -> ABSENT');
+    addFlag(ctx, 'NO_EVENTS');
+    ctx.explanation.push('Derived completeness: no events -> ABSENT');
+    ctx.result = buildResult(ctx);
+    return;
+  }
+
+  if (derived.status === 'INCOMPLETE') {
+    ctx.decision.status = 'INCOMPLETE';
+    ctx.decision.reason_code = derived.flags[0];
+    addFlag(ctx, derived.flags[0]);
+    if (ctx.metrics.late_minutes > 0) {
+      addFlag(ctx, 'LATE');
+    }
+    ctx.explanation.push('Derived completeness: incomplete day -> INCOMPLETE');
     ctx.result = buildResult(ctx);
     return;
   }
