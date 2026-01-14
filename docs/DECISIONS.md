@@ -19,8 +19,25 @@ All CSV imports are split into two phases:
 - Enables safe validation of vendor exports
 - Allows clients to correct data before persistence
 
-**Status**  
+**Status**
 LOCKED
+
+---
+
+## Decision 011 — Company Registry (Company Anchor)
+
+**Decision**
+- Introduce a `companies` table keyed by `company_id` (TEXT) to serve as the stable tenant/company anchor.
+- `company_id` remains the existing identifier used across config/policy; this decision does not change existing API contracts.
+- This is a minimal registry (display_name, timezone, status). It is not the full employer/org hierarchy.
+
+**Rationale**
+- Prevents semantic drift around company_id.
+- Enables multi-company scale safely.
+- Central place for company metadata (timezone/display name) without touching the engine.
+
+**Status**
+Implemented (migration: 20260114_companies_registry.sql)
 
 ---
 

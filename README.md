@@ -38,3 +38,7 @@ Dedup constraint
 Device UID hardening migration
 - Apply: `psql -d <db> -f migrations/20260114_device_uid_hardening.sql`
 - Follow-up after cleanup: `ALTER TABLE device_events VALIDATE CONSTRAINT device_events_device_uid_nonempty;`
+
+Companies registry migration
+- Apply: `psql -U postgres -d attendance -f .\migrations\20260114_companies_registry.sql`
+- Verify: `SELECT * FROM companies ORDER BY company_id;`
