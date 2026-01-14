@@ -59,19 +59,54 @@ LOCKED
 ## Decision 004 — Mandatory Device Identity
 
 **Decision**  
-Every attendance event must have a deterministic device identity:
-- Primary: device serial number (sn)
-- Secondary: machine number (fallback)
+Every canonical attendance event must include a deterministic, non-empty device_uid.
+For ZKTeco CSV imports: device_uid is derived from serial number (sn), with MachineNumber as fallback.
 
 Rows without device identity are rejected.
 
-**Rationale**
-- Required for forensic traceability
-- Required for multi-device environments
-- Prevents unverifiable events
+### Rationale (Why refusal is better than accepting missing device identity)
+- Auditability: without device identity we cannot trace source terminal, location, troubleshooting, or legal evidence chain.
+- Deterministic dedup: our unique key uses (person_id, event_time_utc, direction, device_uid); empty/unknown device_uid causes collisions and silent data loss or silent duplication.
+- Multi-device/multi-site reality: policies and device metadata may vary by device; unknown device breaks correctness.
+
+### Implementation Status (As Implemented)
+- API enforcement: POST /api/device-events rejects empty device_uid with HTTP 400 { error: "DEVICE_ID_REQUIRED" }.
+- CSV commit enforcement: rows missing device_uid are rejected (test asserts this).
+- Test-only behavior: /api/ops/test/reset defaults device_uid to TEST-DEVICE-1 when absent/empty (test harness only).
+- DB hardening: migrations/20260114_device_uid_hardening.sql drops DEFAULT '' and adds CHECK (btrim(device_uid) <> '').
+- Constraint is validated in dev/test after cleanup; suite .\tests\run-all.ps1 passes.
+- Regression test: tests/device_events/device_identity_required.ps1
+- DB constraint validated in dev/test: device_events_device_uid_nonempty (convalidated=true).
 
 **Status**  
-LOCKED
+LOCKED (Implemented)
+
+---
+
+## Decision 004A — Handling Missing Device UID Without Breaking HR Flexibility
+
+**Decision**  
+- Rule (LOCKED): Raw device evidence ingestion MUST refuse missing/empty device_uid. No silent correction.
+- HR flexibility must NOT be achieved by weakening device evidence; it must be achieved in the policy/resolution layer.
+See Decisions 006/007/010 for computed vs effective layering.
+
+### Explicit Batch Override (Planned)
+- CSV commit MAY support an explicit operator-supplied device_uid_override (e.g., query param or header) to attach a deterministic identity when the vendor file lacks it.
+- Must be explicit and audited: response + stored audit must record device_uid_source="override" and preserve raw_payload.
+- Must never default silently; preview must surface this as a blocking issue unless override provided.
+
+**Status**  
+PLANNED (Not Implemented)
+
+### Manual / HR Adjustments (Locked Concept)
+- HR corrections and exceptions belong to policy profiles and manual resolutions (effective layer) and must not mutate the computed facts.
+- Device evidence remains immutable; effective outcome can reflect approved HR decisions.
+
+**Status**  
+LOCKED (Concept; implemented elsewhere)
+
+**Validation Note**  
+After doc update: run .\tests\run-all.ps1 (should remain PASS).
 
 ---
 
@@ -109,7 +144,7 @@ We lock the engine contracts as follows:
 **AttendanceDayInput**
 - Contains person_id, day (YYYY-MM-DD), window_start_utc, window_end_utc
 - Contains an ordered list of sanitized events within the window
-- Each event includes: person_id, event_time_utc (ISO), direction (IN|OUT), device_uid (nullable)
+- Each event includes: person_id, event_time_utc (ISO), direction (IN|OUT), device_uid (non-empty string)
 - Vendor metadata and raw payload are not allowed at the rules boundary
 
 **AttendanceDayResult**
@@ -125,7 +160,7 @@ It enables later simulation (what-if) without changing ingestion or event normal
 
 ---
 
-## Decision 006 � Separation of Computed Facts and HR Policy Decisions
+## Decision 006 — Separation of Computed Facts and HR Policy Decisions
 
 **Context**  
 As the attendance system evolves to support companies of different sizes,
@@ -314,6 +349,13 @@ Classification precedence (MUST be deterministic):
    -> ComputedStatus = PRESENT
 Additional flags (LATE/LEFT_EARLY) are derived after classification from computed metrics.
 
+**Implementation**
+- Engine completeness gate: engine/deriveDayStatus.js and engine/rules/decision.js
+- Regression test: tests/attendance/incomplete.ps1
+
+**Status**
+LOCKED (Implemented)
+
 
 Decision 009 — Attendance endpoint behavior under policy conditions (TEMPORARY)
 
@@ -328,7 +370,7 @@ Plan:
 - Short-term: stabilize tests by ensuring test reset clears leave data for the test person/date (test-only).
 - Phase 5: refactor outputs to always produce computed facts, then apply policy to produce an effective outcome,
   returning both layers explicitly (computed_* vs effective_*), without mutating computed facts.
-**Note: Test reset clears policy-related artifacts (e.g. leave rows) to ensure deterministic cache testing. This does not affect production behavior.
+**Note: Test reset clears policy-related artifacts (e.g. leave rows) to ensure deterministic cache testing. This does not affect production behavior.**
 
 ## Decision 010 — Attendance API Outputs Include Computed + Effective Layers
 
