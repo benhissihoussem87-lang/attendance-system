@@ -24,33 +24,7 @@ LOCKED
 
 ---
 
-## Decision 012 — Tenant scoping of core facts (company_id required)
-
-**Decision**
-- company_id is required at the storage boundary for device_events, attendance_days, and employee_leaves.
-- Default remains DEFAULT for backward compatibility when company_id is omitted.
-- Deduplication and cache keys are tenant-scoped.
-
-**Status**
-LOCKED
-
----
-
-## Decision 013 — DB Schema Must Be Migration-Managed
-
-**Decision**
-Any database table/column used by runtime code must be created/maintained via idempotent migrations in /migrations.
-No manual DB setup is allowed as a dependency for correctness.
-
-**Rationale**
-Prevents schema drift, ensures reproducible installs, supports long-term stability.
-
-**Status**
-LOCKED (Implemented via 20260115_policy_layer_schema.sql)
-
----
-
-## Decision 011 — Company Registry (Company Anchor)
+## Decision 011 ? Company Registry (Company Anchor)
 
 **Decision**
 - Introduce a `companies` table keyed by `company_id` (TEXT) to serve as the stable tenant/company anchor.
@@ -62,8 +36,145 @@ LOCKED (Implemented via 20260115_policy_layer_schema.sql)
 - Enables multi-company scale safely.
 - Central place for company metadata (timezone/display name) without touching the engine.
 
+**Evidence (Repo)**
+- migrations/20260114_companies_registry.sql
+
 **Status**
-Implemented (migration: 20260114_companies_registry.sql)
+Implemented
+
+---
+
+## Decision 012 ? Tenant scoping of core facts (company_id required)
+
+**Decision**
+- company_id is required at the storage boundary for device_events, attendance_days, and employee_leaves.
+- Default remains DEFAULT for backward compatibility when company_id is omitted.
+- Deduplication and cache keys are tenant-scoped.
+- Attendance uniqueness is tenant-scoped (company_id, person_id, work_date).
+
+**Rationale**
+- Prevents cross-tenant collisions in dedup/cache.
+- Enables safe multi-company operation without rewriting core identifiers.
+
+**Evidence (Repo)**
+- migrations/20260116_tenant_scope_core_tables.sql
+- tests/attendance/policy_always_computes.ps1
+- tests/attendance/manual_resolution_overlay.ps1
+
+**Status**
+Implemented (Phase A)
+
+---
+
+
+## Decision 013 ? Company profile metadata is stored in company_profile (1:1)
+
+**Decision**
+- Keep companies as the tenant anchor (company_id).
+- Store optional legal/contact/company metadata in company_profile (1:1) with metadata jsonb.
+- This must not affect attendance engine, computed facts, or simulation.
+
+**Rationale**
+- Avoid bloating companies with volatile fields while enabling enterprise metadata.
+- Preserve fact-vs-policy and keep engine stable.
+
+**Evidence (Repo)**
+- migrations/20260117_company_profile.sql
+- api/companyProfile.routes.js
+- services/companyProfileDb.js
+- tests/company/company_profile.ps1
+
+**Status**
+Implemented
+
+SQL Run Instructions (Do Not Run in Codex)
+- psql -h $env:PGHOST -U $env:PGUSER -d $env:PGDATABASE -f .\migrations\20260117_company_profile.sql
+
+---
+
+## Decision 014 ? DB Schema Must Be Migration-Managed
+
+**Decision**
+Any database table/column used by runtime code must be created/maintained via idempotent migrations in /migrations.
+No manual DB setup is allowed as a dependency for correctness.
+
+**Rationale**
+Prevents schema drift, ensures reproducible installs, supports long-term stability.
+
+**Evidence (Repo)**
+- migrations/20260115_policy_layer_schema.sql
+
+**Status**
+LOCKED (Implemented)
+
+---
+
+## Decision 015 ? Tenant context propagation into API (Phase A)
+
+**Decision**
+- company_id may be provided via query param and/or header x-company-id where applicable.
+- Default remains DEFAULT for backward compatibility.
+- Tenant scoping is applied to core data access for these endpoint families:
+  - /api/attendance
+  - /api/device-events (ingest + CSV commit)
+  - /api/simulate/day and /api/simulate/range
+  - /api/ops/test/*
+
+**Rationale**
+- Ensures storage and retrieval honor tenant boundaries.
+- Enables gradual rollout without breaking existing integrations.
+
+**Evidence (Repo)**
+- api/attendance.routes.js
+- api/deviceEvents.routes.js
+- api/simulate.routes.js
+- api/opsTest.routes.js
+
+**Status**
+Implemented (Phase A)
+
+---
+
+## Decision 016 ? Simulation overrides for ?what-if? analysis (rule-set + policy)
+
+**Decision**
+- Simulation must never persist to attendance_days or attendance_day_resolutions.
+- Range simulation exists for what-if analysis and always computes facts before applying policy.
+- late_minutes penalty respects grace/threshold (e.g., arrival 08:10 with grace 15 => late_minutes 0).
+- LATE flag/status uses raw lateness versus threshold, not late_minutes alone.
+
+**Rationale**
+- Enables safe experiments without mutating history.
+- Keeps Decision 008 semantics intact (flags/metrics drive policy, not status mutations).
+
+**Evidence (Repo)**
+- tests/rulesets/simulation_range_no_persist.ps1
+- tests/rulesets/simulation_late_threshold_whatif.ps1
+- engine/rules/metrics.js
+- engine/rules/decision.js
+
+**Status**
+Implemented
+
+---
+
+## Decision 017 ? Manual resolution overlay (immutability + audit)
+
+**Decision**
+- Computed facts are immutable; manual resolutions override effective outcome only.
+- One active resolution per attendance_day_id is enforced.
+
+**Rationale**
+- Preserves auditability while allowing HR corrections.
+- Ensures deterministic resolution history with a single active record.
+
+**Evidence (Repo)**
+- tests/attendance/manual_resolution_overlay.ps1
+- migrations/20260115_policy_layer_schema.sql (ux_attendance_day_resolutions_one_active)
+- api/attendance.routes.js
+
+**Status**
+Implemented
 
 ---
 
@@ -432,3 +543,14 @@ Computed facts MUST NOT be replaced or mutated by policy decisions.
 
 **Status**
 LOCKED
+
+
+---
+
+## OPEN ITEMS (NEXT STEPS) ? NOT IMPLEMENTED YET
+
+- Employee master data table (canonical employee/person registry) to unify identity, HR attributes, and reporting across devices. Evidence gap: no migration or schema for a canonical employee table.
+- Device registry table for device_uid metadata (vendor, location, site) to preserve auditability and multi-device fleet management. Evidence gap: no migration or schema for a device registry.
+- Tenant scoping Phase B for remaining tenant-bound tables (e.g., rule_sets, rules). Evidence gap: migrations/20260113_rulesets.sql shows no company_id columns on rule_sets or rules.
+- Authentication/authorization tenancy enforcement to prevent cross-company access. Evidence gap: no auth layer or tenancy guard middleware in the API.
+- Admin UI/API for managing companies, policies, rule sets, working days, and holidays. Evidence gap: no dedicated admin endpoints or UI flows.

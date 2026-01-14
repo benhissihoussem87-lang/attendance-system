@@ -9,6 +9,7 @@ if ($allowTestEndpoints -ne 'true') {
 $scriptList = @(
   'ops\health.ps1',
   'ops\ready.ps1',
+  'company\company_profile.ps1',
   'csv\csv_valid.ps1',
   'csv\csv_invalid.ps1',
   'csv\csv_dedup.ps1',
