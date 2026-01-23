@@ -17,6 +17,10 @@ PowerShell start
 - `$env:PGHOST="localhost"; $env:PGUSER="postgres"; $env:PGDATABASE="attendance"; node .\\server.js`
 - `npm start`
 
+DB schema dump (PowerShell)
+- `.\scripts\db\dump-schema.ps1`
+- `db_schema.sql` is generated and not committed.
+
 Quick smoke tests (PowerShell)
 - `Invoke-RestMethod http://localhost:3000/api/ops/health`
 - `Invoke-RestMethod http://localhost:3000/api/ops/ready`
