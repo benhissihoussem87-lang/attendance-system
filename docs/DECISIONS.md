@@ -92,6 +92,28 @@ SQL Run Instructions (Do Not Run in Codex)
 
 ---
 
+## Decision 018 ? Employees Registry Phase 1 (tenant-scoped)
+
+**Decision**
+- Add an employees registry scoped by company_id (tenant).
+- This is additive only and does not change attendance facts, policy evaluation, or simulation behavior.
+- Future: effective-dated employee_assignments can be layered later.
+
+**Rationale**
+- Introduces a canonical employee registry without touching the attendance engine or existing contracts.
+- Supports tenant-aware HR data lookups for reporting and future admin workflows.
+
+**Evidence (Repo)**
+- migrations/20260118_employees_registry.sql
+- api/employeesRegistry.routes.js
+- services/employeesDb.js
+- tests/hr/employees_registry.ps1
+
+**Status**
+Implemented (Phase 1)
+
+---
+
 ## Decision 014 ? DB Schema Must Be Migration-Managed
 
 **Decision**
