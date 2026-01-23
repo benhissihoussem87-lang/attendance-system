@@ -114,6 +114,28 @@ Implemented (Phase 1)
 
 ---
 
+## Decision 019 ? Identity Mappings Registry Phase 1 (tenant-scoped)
+
+**Decision**
+- Add identity_mappings to map external/vendor identifiers to canonical person_id per company_id.
+- Enforce FK to employees to avoid orphan mappings.
+- No silent reassignment; conflicts return 409. Explicit reassign/audit can come later.
+
+**Rationale**
+- Supports vendor-specific identifiers without touching ingestion or attendance semantics.
+- Keeps identity management auditable and tenant-scoped.
+
+**Evidence (Repo)**
+- migrations/20260123_identity_mappings.sql
+- api/identityMappings.routes.js
+- services/identityMappingsDb.js
+- tests/hr/identity_mappings.ps1
+
+**Status**
+Implemented (Phase 1)
+
+---
+
 ## Decision 014 ? DB Schema Must Be Migration-Managed
 
 **Decision**

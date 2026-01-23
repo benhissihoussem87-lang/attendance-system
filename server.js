@@ -27,6 +27,7 @@ app.use('/api/policy-profiles', require('./api/policyProfiles.routes'));
 app.use('/api/resolutions', require('./api/resolutionsByDate.routes'));
 app.use('/api/company-profile', require('./api/companyProfile.routes'));
 app.use('/api/employees-registry', require('./api/employeesRegistry.routes'));
+app.use('/api/identity-mappings', require('./api/identityMappings.routes'));
 
 // ✅ SERVE UI (THIS WAS MISSING)
 app.use('/ui', express.static(path.join(__dirname, 'ui')));
