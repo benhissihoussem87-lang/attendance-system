@@ -13,6 +13,7 @@ const { getActiveResolution } = require('../services/policy/manualResolutionServ
 const { deriveWorkDate } = require('../services/dayBoundary');
 const { getUtcWindowForWorkDate } = require('../services/dayBoundaryWindow');
 const { getCompanyConfig } = require('../services/companyConfigProvider');
+const { getEmployeeDisplay } = require('../services/employeeDirectory');
 const {
   buildComputationSignature,
   isSignatureCompatible
@@ -452,6 +453,8 @@ router.get('/', async (req, res) => {
       };
     }
 
+    const display = await getEmployeeDisplay(db, companyId, personId);
+
     const record = {
       system_version: SYSTEM_VERSION,
       contract: ATTENDANCE_OUTPUT_CONTRACT,
@@ -466,6 +469,10 @@ router.get('/', async (req, res) => {
     record.attendance_day_id = attendanceDayId;
     record.computed = computed;
     record.effective = effectiveOutput;
+    if (display) {
+      record.employee_code = display.employee_code;
+      record.full_name = display.full_name;
+    }
 
     res.json(finalizeRecords([record], cacheMeta, date, companyConfig, windowMeta));
 

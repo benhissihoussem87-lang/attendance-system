@@ -11,6 +11,7 @@ $scriptList = @(
   'ops\ready.ps1',
   'company\company_profile.ps1',
   'hr\employees_registry.ps1',
+  'hr\employees_registry_display_mode.ps1',
   'csv\csv_valid.ps1',
   'csv\csv_invalid.ps1',
   'csv\csv_dedup.ps1',
