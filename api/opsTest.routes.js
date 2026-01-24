@@ -296,6 +296,27 @@ router.get('/attendance-days/count', async (req, res) => {
   }
 });
 
+router.get('/mode', (req, res) => {
+  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const toBool = value => {
+    if (typeof value !== 'string') {
+      return false;
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true';
+  };
+
+  return res.json({
+    allow_test_endpoints: toBool(process.env.ALLOW_TEST_ENDPOINTS),
+    use_identity_mappings: toBool(process.env.USE_IDENTITY_MAPPINGS),
+    require_identity_mappings: toBool(process.env.REQUIRE_IDENTITY_MAPPINGS),
+    use_employees_registry: toBool(process.env.USE_EMPLOYEES_REGISTRY)
+  });
+});
+
 router.post('/seed-ruleset', async (req, res) => {
   if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
     return res.status(404).json({ error: 'Not found' });

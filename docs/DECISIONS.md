@@ -136,6 +136,27 @@ Implemented (Phase 1)
 
 ---
 
+## Decision 020 ? Identity Mappings Phase 2 (ingestion resolution)
+
+**Decision**
+- Device event ingestion may resolve external identifiers to canonical person_id using identity_mappings when enabled.
+- Controlled by flags: USE_IDENTITY_MAPPINGS (off by default) and REQUIRE_IDENTITY_MAPPINGS (strict mode).
+- Preview remains no-write and surfaces identity resolution status; commit persists resolved person_id and identity metadata.
+
+**Rationale**
+- Enables vendor interoperability without changing attendance semantics or engine behavior.
+- Keeps provenance by preserving raw identity evidence in metadata.
+
+**Evidence (Repo)**
+- services/identityResolver.js
+- api/deviceEvents.routes.js
+- tests/hr/identity_mappings_ingestion_mode.ps1
+
+**Status**
+Implemented (Phase 2)
+
+---
+
 ## Decision 014 ? DB Schema Must Be Migration-Managed
 
 **Decision**

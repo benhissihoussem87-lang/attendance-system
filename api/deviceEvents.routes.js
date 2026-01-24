@@ -15,6 +15,7 @@ const {
   interpretEventTime,
   isTimeInterpretationEnabled
 } = require('../services/timeInterpreter');
+const { resolvePersonIdForIdentifier } = require('../services/identityResolver');
 const {
   SYSTEM_VERSION,
   CSV_IMPORT_VERSION,
@@ -52,6 +53,40 @@ function getVendor(req) {
   return String(raw).trim().toLowerCase();
 }
 
+function resolveCompanyId(req, body) {
+  const bodyId = body && typeof body.company_id === 'string' ? body.company_id : null;
+  const queryId = req.query && typeof req.query.company_id === 'string' ? req.query.company_id : null;
+  const headerId = typeof req.get('x-company-id') === 'string' ? req.get('x-company-id') : null;
+
+  return bodyId || queryId || headerId || 'DEFAULT';
+}
+
+function getIdentityContext({ vendor, rowData }) {
+  const providerRaw = vendor || rowData.vendor || 'generic';
+  const provider = typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase() : 'generic';
+  const identifierType = provider === 'zkteco' ? 'pin' : 'person_id';
+  const identifierValue = typeof rowData.person_id === 'string' ? rowData.person_id.trim() : '';
+
+  return { provider, identifierType, identifierValue };
+}
+
+function buildIdentityPayload(rawPayload, identityMeta) {
+  const base = (rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload))
+    ? { ...rawPayload }
+    : rawPayload !== undefined
+      ? { original_raw_payload: rawPayload }
+      : {};
+
+  base.identity = {
+    provider: identityMeta.provider,
+    identifier_type: identityMeta.identifierType,
+    identifier_value: identityMeta.identifierValue,
+    mapping_applied: identityMeta.mappingApplied
+  };
+
+  return base;
+}
+
 /**
  * POST /api/device-events
  * Insert single device event (JSON)
@@ -65,7 +100,10 @@ router.post('/', async (req, res) => {
       direction,
       vendor = null,
       device_uid = null,
-      raw_payload = null
+      raw_payload = null,
+      provider,
+      identifier_type,
+      identifier_value
     } = req.body;
     let parsedPayload = raw_payload;
 
@@ -95,7 +133,32 @@ router.post('/', async (req, res) => {
       throw err;
     }
 
-    const companyId = company_id || 'DEFAULT';
+    const companyId = resolveCompanyId(req, req.body || {});
+    let resolvedPersonId = person_id;
+
+    const useIdentityMappings = process.env.USE_IDENTITY_MAPPINGS === '1';
+    const hasIdentityInputs =
+      typeof provider === 'string' && provider.trim() &&
+      typeof identifier_type === 'string' && identifier_type.trim() &&
+      typeof identifier_value === 'string' && identifier_value.trim();
+    if (useIdentityMappings && hasIdentityInputs) {
+      const resolution = await resolvePersonIdForIdentifier(db, {
+        companyId,
+        provider,
+        identifierType: identifier_type,
+        identifierValue: identifier_value
+      });
+      if (resolution.error === 'identity_mapping_missing') {
+        return res.status(400).json({ error: 'identity_mapping_missing' });
+      }
+      resolvedPersonId = resolution.person_id || resolvedPersonId;
+      parsedPayload = buildIdentityPayload(parsedPayload, {
+        provider,
+        identifierType: identifier_type,
+        identifierValue: identifier_value,
+        mappingApplied: resolution.applied === true
+      });
+    }
 
     await db.query(
       `
@@ -105,7 +168,7 @@ router.post('/', async (req, res) => {
       `,
       [
         companyId,
-        person_id,
+        resolvedPersonId,
         event_time_utc,
         direction,
         vendor,
@@ -114,7 +177,7 @@ router.post('/', async (req, res) => {
       ]
     );
 
-    await invalidateAttendanceCache(db, person_id, event_time_utc, { companyId });
+    await invalidateAttendanceCache(db, resolvedPersonId, event_time_utc, { companyId });
 
     res.status(201).json({ status: 'ok' });
   } catch (err) {
@@ -131,7 +194,7 @@ router.post('/', async (req, res) => {
 router.post(
   '/import/preview',
   express.raw({ type: '*/*', limit: '10mb' }),
-  (req, res) => {
+  async (req, res) => {
     try {
       const csvText =
         req.body instanceof Buffer
@@ -153,6 +216,52 @@ router.post(
       }
 
       const validation = parseDeviceEventsCsv(csvText, options);
+      const companyId = resolveCompanyId(req, null);
+
+      if (Array.isArray(validation.rows)) {
+        for (const row of validation.rows) {
+          if (!row.valid) {
+            continue;
+          }
+          row.data = row.data || {};
+          const identityContext = getIdentityContext({
+            vendor: vendor || row.data.vendor,
+            rowData: row.data
+          });
+
+          const resolution = await resolvePersonIdForIdentifier(db, {
+            companyId,
+            provider: identityContext.provider,
+            identifierType: identityContext.identifierType,
+            identifierValue: identityContext.identifierValue
+          });
+
+          row.data.resolved_person_id = resolution.person_id || identityContext.identifierValue;
+          row.data.identity_mapping_applied = resolution.applied === true;
+          row.data.identity_mapping_reason = resolution.reason || 'missing';
+          row.data.raw_payload = buildIdentityPayload(row.data.raw_payload, {
+            provider: identityContext.provider,
+            identifierType: identityContext.identifierType,
+            identifierValue: identityContext.identifierValue,
+            mappingApplied: resolution.applied === true
+          });
+
+          if (resolution.error === 'identity_mapping_missing') {
+            const message = 'identity mapping not found';
+            row.valid = false;
+            row.errors = row.errors || [];
+            row.errors.push({ code: 'identity_mapping_missing', message });
+            validation.errors.push({
+              row_number: row.row_number,
+              code: 'identity_mapping_missing',
+              message
+            });
+            validation.invalid_rows += 1;
+            validation.valid_rows -= 1;
+          }
+        }
+      }
+
       const timeInterpretationEnabled = isTimeInterpretationEnabled();
       const isZkteco = vendor === 'zkteco';
 
@@ -191,7 +300,7 @@ router.post(
           };
         });
 
-      res.json({
+      const previewResult = {
         system_version: SYSTEM_VERSION,
         contract: CSV_CONTRACT,
         import_version: CSV_IMPORT_VERSION,
@@ -201,7 +310,11 @@ router.post(
         errors: validation.errors,
         error_intelligence: buildErrorIntelligence(validation),
         sample_valid_rows
-      });
+      };
+      if (!previewResult.sample_rows) {
+        previewResult.sample_rows = sample_valid_rows;
+      }
+      res.json(previewResult);
     } catch (err) {
       console.error(err);
       if (err && err.code === 'TIME_INTERPRETATION_FAILED') {
@@ -269,7 +382,7 @@ router.post(
       req.body instanceof Buffer
         ? req.body.toString('utf8')
         : '';
-    const companyId = req.query.company_id || req.get('x-company-id') || 'DEFAULT';
+    const companyId = resolveCompanyId(req, null);
 
     if (!csvText.trim()) {
       return res.status(400).json({ error: 'CSV content is required' });
@@ -293,6 +406,39 @@ router.post(
       return res.status(400).json(validationResult);
     }
 
+    const identityByRow = new Map();
+    if (Array.isArray(validationResult.rows)) {
+      for (const row of validationResult.rows) {
+        if (!row.valid) {
+          continue;
+        }
+        const rowData = row.data || {};
+        const identityContext = getIdentityContext({
+          vendor: vendor || rowData.vendor,
+          rowData
+        });
+        const resolution = await resolvePersonIdForIdentifier(db, {
+          companyId,
+          provider: identityContext.provider,
+          identifierType: identityContext.identifierType,
+          identifierValue: identityContext.identifierValue
+        });
+        if (resolution.error === 'identity_mapping_missing') {
+          return res.status(400).json({
+            error: 'identity_mapping_missing',
+            row_number: row.row_number
+          });
+        }
+        identityByRow.set(row.row_number, {
+          provider: identityContext.provider,
+          identifierType: identityContext.identifierType,
+          identifierValue: identityContext.identifierValue,
+          resolvedPersonId: resolution.person_id || identityContext.identifierValue,
+          mappingApplied: resolution.applied === true
+        });
+      }
+    }
+
     if (vendor === 'zkteco') {
       const errors = validationResult.errors.slice(0, 200);
       let inserted_rows = 0;
@@ -307,6 +453,11 @@ router.post(
         }
 
         const normalized = normalizeCanonicalEvent(row.data);
+        const identity = identityByRow.get(row.row_number);
+        if (identity) {
+          normalized.person_id = identity.resolvedPersonId;
+          normalized.raw_payload = buildIdentityPayload(normalized.raw_payload, identity);
+        }
         const validation = validateCanonicalEvent(normalized);
         if (!validation.ok) {
           if (errors.length < 200) {
@@ -523,6 +674,11 @@ router.post(
         continue;
       }
       const canonical = ingestResult.okRows[0];
+      const identity = identityByRow.get(row.row_number);
+      if (identity) {
+        canonical.person_id = identity.resolvedPersonId;
+        canonical.raw_payload = buildIdentityPayload(canonical.raw_payload, identity);
+      }
       try {
         canonical.device_uid = requireDeviceUid(canonical.device_uid);
       } catch (err) {

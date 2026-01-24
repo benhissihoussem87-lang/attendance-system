@@ -8,17 +8,62 @@ p1,2026-01-07 17:00:00,OUT
 "@
 
 try {
+  $mode = $null
+  try {
+    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  } catch {
+    $mode = $null
+  }
+
+  if ($mode -and $mode.require_identity_mappings -eq $true) {
+    Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+      -Method Put `
+      -ContentType 'application/json' `
+      -Body (@{
+        metadata = @{}
+      } | ConvertTo-Json -Depth 6) | Out-Null
+
+    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+      -Method Put `
+      -ContentType 'application/json' `
+      -Body (@{
+        provider = 'generic'
+        identifier_type = 'person_id'
+        identifier_value = 'p1'
+        person_id = 'p1'
+        active = $true
+        metadata = @{}
+      } | ConvertTo-Json -Depth 6) | Out-Null
+  }
+
   $res = Invoke-RestMethod "$baseUrl/api/device-events/import/preview" `
     -Method Post `
     -ContentType 'text/plain' `
     -Body $csv
+  if ($env:DEBUG_CSV_TESTS -eq '1') {
+    Write-Host ($res | ConvertTo-Json -Depth 10)
+  }
   if ($res.valid_rows -le 0 -or $res.invalid_rows -ne 0) {
+    $keys = if ($res -and $res.PSObject) { $res.PSObject.Properties.Name -join ', ' } else { '<none>' }
+    Write-Host ("CSV PREVIEW DIAGNOSTIC: keys={0}" -f $keys)
+    Write-Host ("CSV PREVIEW DIAGNOSTIC: total_rows={0} valid_rows={1} invalid_rows={2}" -f $res.total_rows, $res.valid_rows, $res.invalid_rows)
+    if ($res.errors) {
+      Write-Host "CSV PREVIEW DIAGNOSTIC: errors="
+      Write-Host ($res.errors | ConvertTo-Json -Depth 10)
+    }
+    if ($env:DEBUG_CSV_TESTS -ne '1') {
+      Write-Host ($res | ConvertTo-Json -Depth 10)
+    }
     Write-Host "FAIL: csv_valid"
     exit 1
   }
   Write-Host "PASS: csv_valid"
   exit 0
 } catch {
+  if ($env:DEBUG_CSV_TESTS -eq '1') {
+    Write-Host "CSV PREVIEW DIAGNOSTIC: exception="
+    Write-Host $_
+  }
   Write-Host "FAIL: csv_valid"
   exit 1
 }

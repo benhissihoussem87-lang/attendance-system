@@ -6,6 +6,15 @@ if ($allowTestEndpoints -ne 'true') {
   exit 1
 }
 
+$baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+try {
+  $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  Write-Host ("SERVER MODE: USE_IDENTITY_MAPPINGS={0} REQUIRE_IDENTITY_MAPPINGS={1} USE_EMPLOYEES_REGISTRY={2}" -f `
+    $mode.use_identity_mappings, $mode.require_identity_mappings, $mode.use_employees_registry)
+} catch {
+  Write-Host "SERVER MODE: unavailable (ALLOW_TEST_ENDPOINTS not enabled?)"
+}
+
 $scriptList = @(
   'ops\health.ps1',
   'ops\ready.ps1',
@@ -13,6 +22,7 @@ $scriptList = @(
   'hr\employees_registry.ps1',
   'hr\employees_registry_display_mode.ps1',
   'hr\identity_mappings.ps1',
+  'hr\identity_mappings_ingestion_mode.ps1',
   'csv\csv_valid.ps1',
   'csv\csv_invalid.ps1',
   'csv\csv_dedup.ps1',
