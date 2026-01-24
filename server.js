@@ -22,7 +22,9 @@ app.use('/api/simulate', require('./api/simulate.routes'));
 app.use('/api/simulation', require('./api/simulation.routes'));
 app.use('/api/device-events', require('./api/deviceEvents.routes'));
 app.use('/api/ops', require('./api/ops.routes'));
-app.use('/api/ops/test', require('./api/opsTest.routes'));
+if (process.env.ALLOW_TEST_ENDPOINTS === 'true') {
+  app.use('/api/ops/test', require('./api/opsTest.routes'));
+}
 app.use('/api/policy-profiles', require('./api/policyProfiles.routes'));
 app.use('/api/resolutions', require('./api/resolutionsByDate.routes'));
 app.use('/api/company-profile', require('./api/companyProfile.routes'));

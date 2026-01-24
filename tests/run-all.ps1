@@ -1,18 +1,40 @@
 $ErrorActionPreference = 'Stop'
 
-$allowTestEndpoints = $env:ALLOW_TEST_ENDPOINTS
-if ($allowTestEndpoints -ne 'true') {
-  Write-Host "FAIL: ALLOW_TEST_ENDPOINTS not enabled"
-  exit 1
-}
-
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 try {
   $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  if (-not $mode.allow_test_endpoints) {
+    Write-Host "FAIL: server mode check"
+    Write-Host "---- ERROR ----"
+    Write-Host "This test suite requires the server to be started with ALLOW_TEST_ENDPOINTS=true"
+    Write-Host "Base URL: $baseUrl"
+    exit 1
+  }
+
+  if ($mode.use_identity_mappings) {
+    $env:USE_IDENTITY_MAPPINGS = '1'
+  } else {
+    Remove-Item Env:USE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
+  }
+  if ($mode.require_identity_mappings) {
+    $env:REQUIRE_IDENTITY_MAPPINGS = '1'
+  } else {
+    Remove-Item Env:REQUIRE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
+  }
+  if ($mode.use_employees_registry) {
+    $env:USE_EMPLOYEES_REGISTRY = '1'
+  } else {
+    Remove-Item Env:USE_EMPLOYEES_REGISTRY -ErrorAction SilentlyContinue
+  }
+
   Write-Host ("SERVER MODE: USE_IDENTITY_MAPPINGS={0} REQUIRE_IDENTITY_MAPPINGS={1} USE_EMPLOYEES_REGISTRY={2}" -f `
     $mode.use_identity_mappings, $mode.require_identity_mappings, $mode.use_employees_registry)
 } catch {
-  Write-Host "SERVER MODE: unavailable (ALLOW_TEST_ENDPOINTS not enabled?)"
+  Write-Host "FAIL: server mode check"
+  Write-Host "---- ERROR ----"
+  Write-Host "This test suite requires the server to be started with ALLOW_TEST_ENDPOINTS=true"
+  Write-Host "Base URL: $baseUrl"
+  exit 1
 }
 
 $scriptList = @(
