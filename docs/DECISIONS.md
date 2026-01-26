@@ -157,6 +157,25 @@ Implemented (Phase 2)
 
 ---
 
+## DECISION 017 — Effective-Dated Rule Set Assignments (Feature-Flagged)
+
+**Date:** 2026-01-25  
+**Context:**  
+Employees may change policies mid-month (e.g., switch from fixed to flexible schedule). Using a single rule_set_id in `employees` is insufficient.
+
+**Decision:**  
+Introduce employee_assignments(company_id, person_id, rule_set_id, valid_from, valid_to) and resolve for work_date.
+
+**Safety:**  
+- Gated behind USE_EMPLOYEE_ASSIGNMENTS; default semantics unchanged.
+- Legacy fallback preserved when no assignment matches.
+
+**Verification:**  
+- New PowerShell test for effective assignment resolution.
+- Ops test mode reports USE_EMPLOYEE_ASSIGNMENTS.
+
+---
+
 ## Decision 014 ? DB Schema Must Be Migration-Managed
 
 **Decision**
@@ -609,6 +628,22 @@ Computed facts MUST NOT be replaced or mutated by policy decisions.
 **Status**
 LOCKED
 
+
+---
+
+## Decision 021 - Migrations Are the Source of Truth; Apply via Script
+
+**Decision**
+We apply all SQL migrations in filename order using scripts/db/apply-migrations.ps1.
+The schema_migrations table tracks applied files to keep deployment deterministic and idempotent.
+
+**Rationale**
+- Ensures any database can be rebuilt consistently from migrations.
+- Prevents drift and ambiguous runtime failures when migrations are missing.
+- Feature preflight checks fail fast when required tables are absent.
+
+**Status**
+Implemented
 
 ---
 

@@ -13,6 +13,8 @@ const { getActiveResolution } = require('../services/policy/manualResolutionServ
 const { deriveWorkDate } = require('../services/dayBoundary');
 const { getUtcWindowForWorkDate } = require('../services/dayBoundaryWindow');
 const { getCompanyConfig } = require('../services/companyConfigProvider');
+const { getEmployee } = require('../services/employeesDb');
+const { resolveRuleSetIdForDate } = require('../services/employeeAssignmentsService');
 const { getEmployeeDisplay } = require('../services/employeeDirectory');
 const {
   buildComputationSignature,
@@ -89,7 +91,14 @@ function finalizeRecords(records, cacheMeta, date, companyConfig, windowMeta) {
   return out;
 }
 
-function buildComputedPayload(data, signature) {
+function buildComputedPayload(data, signature, assignmentResolution) {
+  const audit = {
+    explanation: data.explanation,
+    computation_context: signature
+  };
+  if (assignmentResolution) {
+    audit.assignment_resolution = assignmentResolution;
+  }
   return {
     status: data.status,
     rule_set_id: data.rule_set_id || null,
@@ -100,10 +109,7 @@ function buildComputedPayload(data, signature) {
       break_minutes: data.break_minutes ?? null,
       net_worked_minutes: data.net_worked_minutes ?? null
     },
-    audit: {
-      explanation: data.explanation,
-      computation_context: signature
-    }
+    audit
   };
 }
 
@@ -130,6 +136,44 @@ router.get('/', async (req, res) => {
     const ruleSetIdRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (ruleSetIdParam && !ruleSetIdRegex.test(ruleSetIdParam)) {
       return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a UUID' });
+    }
+    const assignmentsEnabled = process.env.USE_EMPLOYEE_ASSIGNMENTS === '1';
+    let assignmentResolution = null;
+    let resolvedRuleSetId = ruleSetIdParam || null;
+    if (assignmentsEnabled) {
+      assignmentResolution = {
+        enabled: true,
+        matched: false,
+        rule_set_id: null,
+        valid_from: null,
+        valid_to: null,
+        fallback_used: true
+      };
+
+      if (!ruleSetIdParam) {
+        const assignment = await resolveRuleSetIdForDate({
+          db,
+          companyId,
+          personId,
+          workDate: date
+        });
+        if (assignment) {
+          resolvedRuleSetId = assignment.rule_set_id;
+          assignmentResolution = {
+            enabled: true,
+            matched: true,
+            rule_set_id: assignment.rule_set_id,
+            valid_from: assignment.assignment.valid_from,
+            valid_to: assignment.assignment.valid_to,
+            fallback_used: false
+          };
+        } else {
+          const employeeRecord = await getEmployee(db, companyId, personId);
+          if (employeeRecord && employeeRecord.default_rule_set_id) {
+            resolvedRuleSetId = employeeRecord.default_rule_set_id;
+          }
+        }
+      }
     }
     const companyConfig = await getCompanyConfig(db, companyId);
     const signature = buildComputationSignature(companyConfig, {
@@ -171,7 +215,7 @@ router.get('/', async (req, res) => {
 
     try {
       const resolved = await resolveRuleSet(db, {
-        rule_set_id: ruleSetIdParam,
+        rule_set_id: resolvedRuleSetId,
         fallbackRuleSet: ruleSets[employee.rule_set_id]
       });
       selectedRuleSet = resolved.ruleSet;
@@ -389,7 +433,7 @@ router.get('/', async (req, res) => {
     }, {
       ...signature,
       rule_set_selection: ruleSetSelection
-    });
+    }, assignmentResolution);
 
     const effective = evaluateEffectiveOutcome({
       company_id: companyId,

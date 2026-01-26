@@ -12,6 +12,27 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const env = getEnv();
 
+function isTruthy(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true';
+}
+
+async function preflightEmployeeAssignments() {
+  if (!isTruthy(process.env.USE_EMPLOYEE_ASSIGNMENTS)) {
+    return;
+  }
+  const res = await require('./db').query(`
+    SELECT to_regclass('public.employee_assignments') AS t
+  `);
+  const exists = res.rows.length > 0 && res.rows[0].t;
+  if (!exists) {
+    throw new Error('USE_EMPLOYEE_ASSIGNMENTS=1 but public.employee_assignments does not exist. Run scripts/db/apply-migrations.ps1');
+  }
+}
+
 // API routes
 app.use('/api/system', require('./api/system.routes'));
 app.use('/api/employees', require('./api/employees.routes'));
@@ -30,6 +51,7 @@ app.use('/api/resolutions', require('./api/resolutionsByDate.routes'));
 app.use('/api/company-profile', require('./api/companyProfile.routes'));
 app.use('/api/employees-registry', require('./api/employeesRegistry.routes'));
 app.use('/api/identity-mappings', require('./api/identityMappings.routes'));
+app.use('/api/employee-assignments', require('./api/employeeAssignments.routes'));
 
 // ✅ SERVE UI (THIS WAS MISSING)
 app.use('/ui', express.static(path.join(__dirname, 'ui')));
@@ -46,6 +68,14 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.listen(env.port, () => {
-  console.log(`Server running on http://localhost:${env.port}`);
+async function start() {
+  await preflightEmployeeAssignments();
+  app.listen(env.port, () => {
+    console.log(`Server running on http://localhost:${env.port}`);
+  });
+}
+
+start().catch(err => {
+  console.error(err && err.message ? err.message : err);
+  process.exit(1);
 });

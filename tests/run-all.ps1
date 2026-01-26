@@ -26,9 +26,14 @@ try {
   } else {
     Remove-Item Env:USE_EMPLOYEES_REGISTRY -ErrorAction SilentlyContinue
   }
+  if ($mode.use_employee_assignments) {
+    $env:USE_EMPLOYEE_ASSIGNMENTS = '1'
+  } else {
+    Remove-Item Env:USE_EMPLOYEE_ASSIGNMENTS -ErrorAction SilentlyContinue
+  }
 
-  Write-Host ("SERVER MODE: USE_IDENTITY_MAPPINGS={0} REQUIRE_IDENTITY_MAPPINGS={1} USE_EMPLOYEES_REGISTRY={2}" -f `
-    $mode.use_identity_mappings, $mode.require_identity_mappings, $mode.use_employees_registry)
+  Write-Host ("SERVER MODE: USE_IDENTITY_MAPPINGS={0} REQUIRE_IDENTITY_MAPPINGS={1} USE_EMPLOYEES_REGISTRY={2} USE_EMPLOYEE_ASSIGNMENTS={3}" -f `
+    $mode.use_identity_mappings, $mode.require_identity_mappings, $mode.use_employees_registry, $mode.use_employee_assignments)
 } catch {
   Write-Host "FAIL: server mode check"
   Write-Host "---- ERROR ----"
@@ -60,6 +65,12 @@ $scriptList = @(
   'rulesets\simulation_range_no_persist.ps1',
   'rulesets\simulation_late_threshold_whatif.ps1'
 )
+
+if ($mode.use_employee_assignments) {
+  $scriptList += 'hr\employee_assignments_effective.ps1'
+} else {
+  Write-Host 'SKIP: employee assignments effective (USE_EMPLOYEE_ASSIGNMENTS not enabled)'
+}
 
 foreach ($script in $scriptList) {
   $path = Join-Path $PSScriptRoot $script
