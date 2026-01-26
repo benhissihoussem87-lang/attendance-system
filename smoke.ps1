@@ -5,7 +5,11 @@ param(
   [string]$PgUser = 'postgres',
   [string]$Password,
   [switch]$SkipDrop,
-  [bool]$RunTests = $true
+  [bool]$RunTests = $true,
+  [string]$BaseUrl = 'http://localhost:3000',
+  [int]$ServerPort = 3000,
+  [switch]$AutoStartServer,
+  [int]$ServerStartTimeoutSeconds = 60
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,6 +18,13 @@ $script:SetPassword = $false
 $script:SetDbName = $false
 $script:SetTestEnv = $false
 $script:SetPgEnv = $false
+$script:StartedServer = $false
+$script:ServerProcess = $null
+$script:ServerLogPath = $null
+$script:ServerPortPrev = $null
+$script:HadServerPort = $false
+$script:BaseUrlPrev = $null
+$script:HadBaseUrl = $false
 $script:FailedStep = $null
 
 function Write-Section([string]$title) {
@@ -46,6 +57,48 @@ function Invoke-Psql([string]$label, [string]$database, [string]$sql, [switch]$Q
   Invoke-External $label 'psql' $psqlArgs
 }
 
+function Test-PortOpen([string]$hostName, [int]$portNumber) {
+  $client = $null
+  try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    $iar = $client.BeginConnect($hostName, $portNumber, $null, $null)
+    if (-not $iar.AsyncWaitHandle.WaitOne(1000, $false)) {
+      $client.Close()
+      return $false
+    }
+    $client.EndConnect($iar)
+    $client.Close()
+    return $true
+  } catch {
+    if ($client) {
+      try { $client.Close() } catch {}
+    }
+    return $false
+  }
+}
+
+function Write-ServerLogTail([string]$logPath) {
+  if (-not $logPath) {
+    return
+  }
+  if (Test-Path $logPath) {
+    Write-Host '---- server log tail ----'
+    Get-Content -Path $logPath -Tail 200 | ForEach-Object { Write-Host $_ }
+  }
+}
+
+function Wait-ForPort([string]$hostName, [int]$portNumber, [int]$timeoutSeconds, [string]$logPath) {
+  $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-PortOpen $hostName $portNumber) {
+      return
+    }
+    Start-Sleep -Seconds 1
+  }
+  Write-ServerLogTail $logPath
+  Fail-Step 'server_ready' ('Server not ready at ' + $hostName + ':' + $portNumber + '. Log: ' + $logPath)
+}
+
 function Get-ColumnSet([string]$tableName) {
   $sql = "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='$tableName' ORDER BY ordinal_position;"
   $psqlArgs = @('-X', '-v', 'ON_ERROR_STOP=1', '-h', $PgHost, '-p', $PgPort, '-U', $PgUser, '-d', $DbName, '-t', '-A', '-c', $sql)
@@ -64,6 +117,10 @@ function Get-ColumnSet([string]$tableName) {
 }
 
 try {
+  if (-not $PSBoundParameters.ContainsKey('AutoStartServer')) {
+    $AutoStartServer = $true
+  }
+
   if ($Password) {
     $env:PGPASSWORD = $Password
     $script:SetPassword = $true
@@ -157,6 +214,61 @@ SELECT
     $env:USE_EMPLOYEE_ASSIGNMENTS = '1'
     $script:SetTestEnv = $true
 
+    Write-Section 'Server (tests)'
+    $script:BaseUrlPrev = $env:BASE_URL
+    $script:HadBaseUrl = $null -ne $env:BASE_URL
+    $env:BASE_URL = $BaseUrl
+
+    $serverHost = $null
+    try {
+      $serverHost = ([Uri]$BaseUrl).Host
+    } catch {
+      $serverHost = 'localhost'
+    }
+    if (-not $serverHost) {
+      $serverHost = 'localhost'
+    }
+
+    $isListening = Test-PortOpen $serverHost $ServerPort
+    if ($AutoStartServer -and -not $isListening) {
+      Write-Host 'Starting server with ALLOW_TEST_ENDPOINTS=true'
+      $tmpDir = Join-Path $PSScriptRoot '.tmp'
+      if (-not (Test-Path $tmpDir)) {
+        New-Item -Path $tmpDir -ItemType Directory | Out-Null
+      }
+      $script:ServerLogPath = Join-Path $tmpDir 'smoke-server.log'
+
+      $script:ServerPortPrev = $env:PORT
+      $script:HadServerPort = $null -ne $env:PORT
+      $env:PORT = $ServerPort
+
+      try {
+        $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
+          -WorkingDirectory $PSScriptRoot `
+          -RedirectStandardOutput $script:ServerLogPath `
+          -RedirectStandardError $script:ServerLogPath `
+          -NoNewWindow `
+          -PassThru
+      } catch {
+        $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
+          -WorkingDirectory $PSScriptRoot `
+          -RedirectStandardOutput $script:ServerLogPath `
+          -RedirectStandardError $script:ServerLogPath `
+          -PassThru
+      }
+      $script:StartedServer = $true
+
+      Wait-ForPort $serverHost $ServerPort $ServerStartTimeoutSeconds $script:ServerLogPath
+      try {
+        Invoke-WebRequest -Uri $BaseUrl -TimeoutSec 5 | Out-Null
+      } catch {
+      }
+    } elseif ($isListening) {
+      Write-Host 'Server already running, skip start'
+    } else {
+      Write-Host 'AutoStartServer disabled; skipping server start.'
+    }
+
     Invoke-External 'tests' '.\tests\run-all.ps1' @()
   } else {
     Write-Host 'RunTests not set; skipping tests.'
@@ -183,5 +295,23 @@ SELECT
     Remove-Item Env:USE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
     Remove-Item Env:REQUIRE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
     Remove-Item Env:USE_EMPLOYEE_ASSIGNMENTS -ErrorAction SilentlyContinue
+  }
+  if ($script:HadBaseUrl) {
+    $env:BASE_URL = $script:BaseUrlPrev
+  } else {
+    Remove-Item Env:BASE_URL -ErrorAction SilentlyContinue
+  }
+  if ($script:StartedServer -and $script:ServerProcess) {
+    try {
+      Stop-Process -Id $script:ServerProcess.Id -Force
+    } catch {
+    }
+  }
+  if ($script:StartedServer) {
+    if ($script:HadServerPort) {
+      $env:PORT = $script:ServerPortPrev
+    } else {
+      Remove-Item Env:PORT -ErrorAction SilentlyContinue
+    }
   }
 }
