@@ -3,6 +3,18 @@ const router = express.Router();
 
 const db = require('../db');
 
+async function getColumnSet(tableName) {
+  const res = await db.query(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = $1
+    `,
+    [tableName]
+  );
+  return new Set(res.rows.map(row => row.column_name));
+}
+
 function isValidDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
@@ -43,20 +55,49 @@ router.post('/reset', async (req, res) => {
   try {
     await db.query('BEGIN');
 
-    await db.query(
-      `
-      INSERT INTO company_config
-        (company_id, company_timezone, night_shift_enabled, day_start_time)
-      VALUES ($1,$2,$3,$4)
-      ON CONFLICT (company_id)
-      DO UPDATE SET
-        company_timezone = EXCLUDED.company_timezone,
-        night_shift_enabled = EXCLUDED.night_shift_enabled,
-        day_start_time = EXCLUDED.day_start_time,
-        updated_at = NOW()
-      `,
-      [companyId, safeCompanyTimezone, safeNightShiftEnabled, safeDayStartTime]
-    );
+    const configCols = await getColumnSet('company_config');
+    if (configCols.size > 0) {
+      const tzCol = configCols.has('company_timezone')
+        ? 'company_timezone'
+        : (configCols.has('timezone') ? 'timezone' : null);
+      const insertCols = ['company_id'];
+      const insertValues = [companyId];
+      const updates = [];
+
+      if (tzCol) {
+        insertCols.push(tzCol);
+        insertValues.push(safeCompanyTimezone);
+        updates.push(`${tzCol} = EXCLUDED.${tzCol}`);
+      }
+      if (configCols.has('night_shift_enabled')) {
+        insertCols.push('night_shift_enabled');
+        insertValues.push(safeNightShiftEnabled);
+        updates.push('night_shift_enabled = EXCLUDED.night_shift_enabled');
+      }
+      if (configCols.has('day_start_time')) {
+        insertCols.push('day_start_time');
+        insertValues.push(safeDayStartTime);
+        updates.push('day_start_time = EXCLUDED.day_start_time');
+      }
+      if (configCols.has('updated_at')) {
+        updates.push('updated_at = NOW()');
+      }
+
+      const placeholders = insertCols.map((_, index) => `$${index + 1}`).join(', ');
+      const updateSql = updates.length > 0
+        ? `DO UPDATE SET ${updates.join(', ')}`
+        : 'DO NOTHING';
+
+      await db.query(
+        `
+        INSERT INTO company_config (${insertCols.join(', ')})
+        VALUES (${placeholders})
+        ON CONFLICT (company_id)
+        ${updateSql}
+        `,
+        insertValues
+      );
+    }
 
     await db.query(
       `
@@ -112,13 +153,44 @@ router.post('/reset', async (req, res) => {
       [companyId, person_id, datePlus1.toISOString().slice(0, 10), dateMinus1.toISOString().slice(0, 10)]
     );
 
-    await db.query(
-      `
-      DELETE FROM company_working_days
-      WHERE company_id = $1 AND weekday = $2
-      `,
-      [companyId, baseWeekday]
-    );
+    const workingDaysCols = await getColumnSet('company_working_days');
+    if (workingDaysCols.size > 0) {
+      await db.query(
+        `
+        DELETE FROM company_working_days
+        WHERE company_id = $1
+        `,
+        [companyId]
+      );
+
+      const dayCol = workingDaysCols.has('day_of_week') ? 'day_of_week' : (
+        workingDaysCols.has('weekday') ? 'weekday' : null
+      );
+      const workingCol = workingDaysCols.has('is_working_day') ? 'is_working_day' : (
+        workingDaysCols.has('is_working') ? 'is_working' : null
+      );
+
+      if (dayCol && workingCol && Array.isArray(req.body.working_days)) {
+        for (const entry of req.body.working_days) {
+          const dayValue = Number.isInteger(entry?.day_of_week)
+            ? entry.day_of_week
+            : (Number.isInteger(entry?.weekday) ? entry.weekday : null);
+          const isWorking = (entry && Object.prototype.hasOwnProperty.call(entry, 'is_working_day'))
+            ? entry.is_working_day
+            : entry?.is_working;
+          if (!Number.isInteger(dayValue) || typeof isWorking !== 'boolean') {
+            continue;
+          }
+          await db.query(
+            `
+            INSERT INTO company_working_days (company_id, ${dayCol}, ${workingCol})
+            VALUES ($1, $2, $3)
+            `,
+            [companyId, dayValue, isWorking]
+          );
+        }
+      }
+    }
 
     await db.query('COMMIT');
     return res.json({ status: 'ok' });
@@ -169,23 +241,67 @@ router.post('/seed-leave', async (req, res) => {
     await db.query('BEGIN');
 
     const companyId = company_id || 'DEFAULT';
-    await db.query(
-      `
-      DELETE FROM employee_leaves
-      WHERE company_id = $1
-        AND person_id = $2
-        AND $3::date BETWEEN start_date AND end_date
-      `,
-      [companyId, person_id, date]
-    );
+    const leavesCols = await getColumnSet('employee_leaves');
+    const hasCompanyId = leavesCols.has('company_id');
+    const hasAffectsAttendance = leavesCols.has('affects_attendance');
 
-    await db.query(
-      `
-      INSERT INTO employee_leaves (company_id, person_id, start_date, end_date, leave_type, affects_attendance)
-      VALUES ($1, $2, $3::date, $4::date, $5, $6)
-      `,
-      [companyId, person_id, startDate, endDate, leaveType, affects]
-    );
+    // Verification: tests\attendance\policy_always_computes.ps1 -> 42703 affects_attendance missing.
+    if (hasCompanyId) {
+      await db.query(
+        `
+        DELETE FROM employee_leaves
+        WHERE company_id = $1
+          AND person_id = $2
+          AND $3::date BETWEEN start_date AND end_date
+        `,
+        [companyId, person_id, date]
+      );
+    } else {
+      await db.query(
+        `
+        DELETE FROM employee_leaves
+        WHERE person_id = $1
+          AND $2::date BETWEEN start_date AND end_date
+        `,
+        [personId, date]
+      );
+    }
+
+    if (hasAffectsAttendance) {
+      if (hasCompanyId) {
+        await db.query(
+          `
+          INSERT INTO employee_leaves (company_id, person_id, start_date, end_date, leave_type, affects_attendance)
+          VALUES ($1, $2, $3::date, $4::date, $5, $6)
+          `,
+          [companyId, personId, startDate, endDate, leaveType, affects]
+        );
+      } else {
+        await db.query(
+          `
+          INSERT INTO employee_leaves (person_id, start_date, end_date, leave_type, affects_attendance)
+          VALUES ($1, $2::date, $3::date, $4, $5)
+          `,
+          [personId, startDate, endDate, leaveType, affects]
+        );
+      }
+    } else if (hasCompanyId) {
+      await db.query(
+        `
+        INSERT INTO employee_leaves (company_id, person_id, start_date, end_date, leave_type)
+        VALUES ($1, $2, $3::date, $4::date, $5)
+        `,
+        [companyId, personId, startDate, endDate, leaveType]
+      );
+    } else {
+      await db.query(
+        `
+        INSERT INTO employee_leaves (person_id, start_date, end_date, leave_type)
+        VALUES ($1, $2::date, $3::date, $4)
+        `,
+        [personId, startDate, endDate, leaveType]
+      );
+    }
 
     await db.query('COMMIT');
     return res.json({
@@ -232,17 +348,29 @@ router.post('/seed-nonworking', async (req, res) => {
   try {
     await db.query('BEGIN');
 
+    const workingDaysCols = await getColumnSet('company_working_days');
+    const dayCol = workingDaysCols.has('day_of_week') ? 'day_of_week' : (
+      workingDaysCols.has('weekday') ? 'weekday' : null
+    );
+    const workingCol = workingDaysCols.has('is_working_day') ? 'is_working_day' : (
+      workingDaysCols.has('is_working') ? 'is_working' : null
+    );
+
+    if (!dayCol || !workingCol) {
+      throw new Error('company_working_days schema mismatch');
+    }
+
     await db.query(
       `
       DELETE FROM company_working_days
-      WHERE company_id = $1 AND weekday = $2
+      WHERE company_id = $1 AND ${dayCol} = $2
       `,
       [companyId, weekday]
     );
 
     await db.query(
       `
-      INSERT INTO company_working_days (company_id, weekday, is_working)
+      INSERT INTO company_working_days (company_id, ${dayCol}, ${workingCol})
       VALUES ($1,$2,false)
       `,
       [companyId, weekday]
@@ -313,7 +441,8 @@ router.get('/mode', (req, res) => {
     allow_test_endpoints: toBool(process.env.ALLOW_TEST_ENDPOINTS),
     use_identity_mappings: toBool(process.env.USE_IDENTITY_MAPPINGS),
     require_identity_mappings: toBool(process.env.REQUIRE_IDENTITY_MAPPINGS),
-    use_employees_registry: toBool(process.env.USE_EMPLOYEES_REGISTRY)
+    use_employees_registry: toBool(process.env.USE_EMPLOYEES_REGISTRY),
+    use_employee_assignments: toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS)
   });
 });
 
