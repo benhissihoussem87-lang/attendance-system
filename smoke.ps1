@@ -21,6 +21,8 @@ $script:SetPgEnv = $false
 $script:StartedServer = $false
 $script:ServerProcess = $null
 $script:ServerLogPath = $null
+$script:ServerStdoutLogPath = $null
+$script:ServerStderrLogPath = $null
 $script:ServerPortPrev = $null
 $script:HadServerPort = $false
 $script:BaseUrlPrev = $null
@@ -77,17 +79,18 @@ function Test-PortOpen([string]$hostName, [int]$portNumber) {
   }
 }
 
-function Write-ServerLogTail([string]$logPath) {
-  if (-not $logPath) {
-    return
+function Write-ServerLogsTail([string]$outPath, [string]$errPath) {
+  if ($outPath -and (Test-Path $outPath)) {
+    Write-Host '---- server stdout tail ----'
+    Get-Content -Path $outPath -Tail 200 | ForEach-Object { Write-Host $_ }
   }
-  if (Test-Path $logPath) {
-    Write-Host '---- server log tail ----'
-    Get-Content -Path $logPath -Tail 200 | ForEach-Object { Write-Host $_ }
+  if ($errPath -and (Test-Path $errPath)) {
+    Write-Host '---- server stderr tail ----'
+    Get-Content -Path $errPath -Tail 200 | ForEach-Object { Write-Host $_ }
   }
 }
 
-function Wait-ForPort([string]$hostName, [int]$portNumber, [int]$timeoutSeconds, [string]$logPath) {
+function Wait-ForPort([string]$hostName, [int]$portNumber, [int]$timeoutSeconds, [string]$outPath, [string]$errPath) {
   $deadline = (Get-Date).AddSeconds($timeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     if (Test-PortOpen $hostName $portNumber) {
@@ -95,8 +98,8 @@ function Wait-ForPort([string]$hostName, [int]$portNumber, [int]$timeoutSeconds,
     }
     Start-Sleep -Seconds 1
   }
-  Write-ServerLogTail $logPath
-  Fail-Step 'server_ready' ('Server not ready at ' + $hostName + ':' + $portNumber + '. Log: ' + $logPath)
+  Write-ServerLogsTail $outPath $errPath
+  Fail-Step 'server_ready' ('Server not ready at ' + $hostName + ':' + $portNumber + '. Logs: ' + $outPath + ' | ' + $errPath)
 }
 
 function Get-ColumnSet([string]$tableName) {
@@ -236,7 +239,9 @@ SELECT
       if (-not (Test-Path $tmpDir)) {
         New-Item -Path $tmpDir -ItemType Directory | Out-Null
       }
-      $script:ServerLogPath = Join-Path $tmpDir 'smoke-server.log'
+      $script:ServerStdoutLogPath = Join-Path $tmpDir 'smoke-server.out.log'
+      $script:ServerStderrLogPath = Join-Path $tmpDir 'smoke-server.err.log'
+      $script:ServerLogPath = $script:ServerStdoutLogPath
 
       $script:ServerPortPrev = $env:PORT
       $script:HadServerPort = $null -ne $env:PORT
@@ -245,20 +250,20 @@ SELECT
       try {
         $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
           -WorkingDirectory $PSScriptRoot `
-          -RedirectStandardOutput $script:ServerLogPath `
-          -RedirectStandardError $script:ServerLogPath `
+          -RedirectStandardOutput $script:ServerStdoutLogPath `
+          -RedirectStandardError $script:ServerStderrLogPath `
           -NoNewWindow `
           -PassThru
       } catch {
         $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
           -WorkingDirectory $PSScriptRoot `
-          -RedirectStandardOutput $script:ServerLogPath `
-          -RedirectStandardError $script:ServerLogPath `
+          -RedirectStandardOutput $script:ServerStdoutLogPath `
+          -RedirectStandardError $script:ServerStderrLogPath `
           -PassThru
       }
       $script:StartedServer = $true
 
-      Wait-ForPort $serverHost $ServerPort $ServerStartTimeoutSeconds $script:ServerLogPath
+      Wait-ForPort $serverHost $ServerPort $ServerStartTimeoutSeconds $script:ServerStdoutLogPath $script:ServerStderrLogPath
       try {
         Invoke-WebRequest -Uri $BaseUrl -TimeoutSec 5 | Out-Null
       } catch {

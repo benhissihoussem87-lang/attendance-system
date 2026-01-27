@@ -230,6 +230,7 @@ router.post('/seed-leave', async (req, res) => {
     return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
   }
 
+  const personId = person_id.trim();
   const leaveType = (typeof leave_type === 'string' && leave_type.trim())
     ? leave_type.trim()
     : 'TEST_LEAVE';
@@ -254,7 +255,7 @@ router.post('/seed-leave', async (req, res) => {
           AND person_id = $2
           AND $3::date BETWEEN start_date AND end_date
         `,
-        [companyId, person_id, date]
+        [companyId, personId, date]
       );
     } else {
       await db.query(
@@ -307,7 +308,7 @@ router.post('/seed-leave', async (req, res) => {
     return res.json({
       status: 'ok',
       company_id: companyId,
-      person_id: person_id.trim(),
+      person_id: personId,
       start_date: startDate,
       end_date: endDate,
       leave_type: leaveType,
