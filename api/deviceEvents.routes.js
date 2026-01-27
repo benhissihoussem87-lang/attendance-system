@@ -21,6 +21,10 @@ const {
   CSV_IMPORT_VERSION,
   CSV_CONTRACT
 } = require('../contracts/systemContracts');
+const {
+  getIdentityContext: getAdapterIdentityContext,
+  getSupportedVendors
+} = require('../adapters/vendors/registry');
 
 function getDelimiter(req) {
   const raw =
@@ -53,6 +57,11 @@ function getVendor(req) {
   return String(raw).trim().toLowerCase();
 }
 
+function isPlainText(req) {
+  const contentType = String(req.get('content-type') || '').toLowerCase();
+  return contentType.includes('text/plain') || contentType.includes('text/txt');
+}
+
 function resolveCompanyId(req, body) {
   const bodyId = body && typeof body.company_id === 'string' ? body.company_id : null;
   const queryId = req.query && typeof req.query.company_id === 'string' ? req.query.company_id : null;
@@ -62,12 +71,12 @@ function resolveCompanyId(req, body) {
 }
 
 function getIdentityContext({ vendor, rowData }) {
-  const providerRaw = vendor || rowData.vendor || 'generic';
-  const provider = typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase() : 'generic';
-  const identifierType = provider === 'zkteco' ? 'pin' : 'person_id';
-  const identifierValue = typeof rowData.person_id === 'string' ? rowData.person_id.trim() : '';
-
-  return { provider, identifierType, identifierValue };
+  const extracted = getAdapterIdentityContext({ vendor, rowData });
+  return {
+    provider: extracted.provider,
+    identifierType: extracted.identifier_type,
+    identifierValue: extracted.identifier_value
+  };
 }
 
 function buildIdentityPayload(rawPayload, identityMeta) {
@@ -210,12 +219,23 @@ router.post(
       if (vendor) {
         options.vendor = vendor;
       }
+      if (vendor === 'anviz' && isPlainText(req)) {
+        options.delimiter = '\t';
+      }
       const delimiter = getDelimiter(req);
       if (delimiter) {
         options.delimiter = delimiter;
       }
 
       const validation = parseDeviceEventsCsv(csvText, options);
+      const unknownVendorError = validation.errors.find(err => err.code === 'UNKNOWN_VENDOR');
+      if (unknownVendorError) {
+        return res.status(400).json({
+          error: 'unknown_vendor',
+          detail: unknownVendorError.message,
+          supported_vendors: getSupportedVendors()
+        });
+      }
       const companyId = resolveCompanyId(req, null);
 
       if (Array.isArray(validation.rows)) {
@@ -351,12 +371,23 @@ router.post(
       if (vendor) {
         options.vendor = vendor;
       }
+      if (vendor === 'anviz' && isPlainText(req)) {
+        options.delimiter = '\t';
+      }
       const delimiter = getDelimiter(req);
       if (delimiter) {
         options.delimiter = delimiter;
       }
 
       const validation = parseDeviceEventsCsv(csvText, options);
+      const unknownVendorError = validation.errors.find(err => err.code === 'UNKNOWN_VENDOR');
+      if (unknownVendorError) {
+        return res.status(400).json({
+          error: 'unknown_vendor',
+          detail: unknownVendorError.message,
+          supported_vendors: getSupportedVendors()
+        });
+      }
       const errorCsv = buildErrorsCsv(validation);
 
       res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -393,11 +424,22 @@ router.post(
     if (vendor) {
       options.vendor = vendor;
     }
+    if (vendor === 'anviz' && isPlainText(req)) {
+      options.delimiter = '\t';
+    }
     const delimiter = getDelimiter(req);
     if (delimiter) {
       options.delimiter = delimiter;
     }
     const validationResult = parseDeviceEventsCsv(csvText, options);
+    const unknownVendorError = validationResult.errors.find(err => err.code === 'UNKNOWN_VENDOR');
+    if (unknownVendorError) {
+      return res.status(400).json({
+        error: 'unknown_vendor',
+        detail: unknownVendorError.message,
+        supported_vendors: getSupportedVendors()
+      });
+    }
     const missingRequired = validationResult.errors.some(
       err => err.code === 'MISSING_REQUIRED_COLUMN'
     );

@@ -222,13 +222,16 @@ function mapRowToCanonical(row, context = {}) {
   const checkTypeMap = getCheckTypeMap(context);
 
   const badgeNumber = String(row.badgenumber || '').trim();
+  const userId = String(row.userid || '').trim();
   const checkTimeRaw = String(row.checktime || '').trim();
   const checkTypeRaw = String(row.checktype || '').trim();
   const snRaw = String(row.sn || '').trim();
   const machineNumberRaw = String(row.machinenumber || '').trim();
 
-  if (!badgeNumber) {
-    throw new Error('Badgenumber is required to map person_id');
+  const pin = badgeNumber || userId;
+  const pinSource = badgeNumber ? 'badgenumber' : (userId ? 'userid' : null);
+  if (!pin) {
+    throw new Error('Badgenumber or USERID is required to map person_id');
   }
 
   const components = parseLocalDateTime(checkTimeRaw);
@@ -273,12 +276,13 @@ function mapRowToCanonical(row, context = {}) {
       checktype_raw: checkTypeRaw,
       checktype_mapped: direction,
       device_uid_source: deviceUidSource,
-      device_uid_fallback: deviceUidFallback
+      device_uid_fallback: deviceUidFallback,
+      pin_source: pinSource
     }
   };
 
   return {
-    person_id: badgeNumber,
+    person_id: pin,
     event_time_utc: utcDate.toISOString(),
     direction,
     device_uid: deviceUid,
@@ -330,7 +334,12 @@ function parseCsv(csvText, options = {}) {
   });
 
   const missing = [];
-  ['badgenumber', 'checktime', 'checktype'].forEach(col => {
+  const hasBadgenumberCol = headerMap.badgenumber !== undefined;
+  const hasUseridCol = headerMap.userid !== undefined;
+  if (!hasBadgenumberCol && !hasUseridCol) {
+    missing.push('badgenumber or userid');
+  }
+  ['checktime', 'checktype'].forEach(col => {
     if (headerMap[col] === undefined) {
       missing.push(col);
     }
@@ -372,15 +381,18 @@ function parseCsv(csvText, options = {}) {
 
     const rowErrors = [];
     const badgeNumber = getValue('badgenumber');
+    const userId = getValue('userid');
     const checkTimeRaw = getValue('checktime');
     const checkTypeRaw = getValue('checktype');
     const snRaw = getValue('sn');
     const machineNumberRaw = getValue('machinenumber');
 
-    if (!badgeNumber) {
+    const pin = badgeNumber || userId;
+    const pinSource = badgeNumber ? 'badgenumber' : (userId ? 'userid' : null);
+    if (!pin) {
       rowErrors.push({
-        code: 'MISSING_BADGENUMBER',
-        message: 'Badgenumber is required to map person_id'
+        code: 'MISSING_PIN',
+        message: 'Badgenumber or USERID is required to map person_id'
       });
     }
 
@@ -446,7 +458,7 @@ function parseCsv(csvText, options = {}) {
         });
 
         row.data = {
-          person_id: badgeNumber,
+          person_id: pin,
           event_time_utc: utcDate.toISOString(),
           direction: checkTypeMap[checkTypeRaw],
           device_uid: deviceUid,
@@ -460,7 +472,8 @@ function parseCsv(csvText, options = {}) {
               checktype_raw: checkTypeRaw,
               checktype_mapped: checkTypeMap[checkTypeRaw],
               device_uid_source: deviceUidSource,
-              device_uid_fallback: deviceUidFallback
+              device_uid_fallback: deviceUidFallback,
+              pin_source: pinSource
             }
           }
         };
@@ -486,7 +499,15 @@ function parseCsv(csvText, options = {}) {
 const zktecoAdapter = {
   id: 'zkteco',
   parseCsv,
-  mapRowToCanonical
+  mapRowToCanonical,
+  identityExtraction(rowData = {}) {
+    const pin = typeof rowData.person_id === 'string' ? rowData.person_id.trim() : '';
+    return {
+      provider: 'zkteco',
+      identifier_type: 'pin',
+      identifier_value: pin
+    };
+  }
 };
 
 module.exports = zktecoAdapter;

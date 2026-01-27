@@ -1,0 +1,7 @@
+﻿person_id	event_time	direction	device_uid
+1001	2026-01-26 08:03:12	IN	anviz:D-1
+1001	2026-01-26 12:01:08	OUT	anviz:D-1
+1001	2026-01-26 13:02:44	IN	anviz:D-1
+1001	2026-01-26 17:11:29	OUT	anviz:D-1
+1002	2026-01-26 08:14:05	IN	anviz:D-1
+1002	2026-01-26 16:58:41	OUT	anviz:D-1

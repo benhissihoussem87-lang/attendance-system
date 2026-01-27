@@ -55,9 +55,32 @@ function testUnknownChecktypeInvalid() {
   assert.strictEqual(Boolean(unknownError), true);
 }
 
+function testUseridAsPinWithoutBadgenumber() {
+  const csvText = loadFixture('zkteco_checkinout_userid_as_pin.csv');
+  const result = zktecoAdapter.parseCsv(csvText, {
+    source_timezone: 'UTC',
+    checktype_map: {
+      I: 'IN',
+      O: 'OUT'
+    }
+  });
+
+  assert.strictEqual(result.total_rows, 2);
+  assert.strictEqual(result.valid_rows, 2);
+  assert.strictEqual(result.invalid_rows, 0);
+
+  const validRows = result.rows.filter(row => row.valid);
+  assert.strictEqual(validRows.length, 2);
+
+  const first = validRows[0].data;
+  assert.strictEqual(first.person_id, '1001');
+  assert.strictEqual(first.raw_payload.mapping_audit.pin_source, 'userid');
+}
+
 function run() {
   testParseCsv();
   testUnknownChecktypeInvalid();
+  testUseridAsPinWithoutBadgenumber();
   console.log('zktecoAdapter tests passed');
 }
 

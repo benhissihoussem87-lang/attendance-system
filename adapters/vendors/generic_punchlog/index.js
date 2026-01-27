@@ -1,3 +1,13 @@
+/**
+ * Vendor adapter: generic_punchlog
+ *
+ * Assumptions:
+ * - employee_id is the identity identifier (person_id).
+ * - timestamp is already UTC (ISO or "YYYY-MM-DD HH:MM:SS").
+ * - event is IN/OUT when present; otherwise direction is null with an audit note.
+ * - device_serial is required to build device_uid.
+ */
+
 function detectDelimiter(line) {
   const candidates = [',', ';', '\t'];
   const counts = candidates.map(delim => countDelimiter(line, delim));
@@ -68,21 +78,29 @@ function normalizeHeaderName(name) {
 }
 
 function mapHeaderAlias(name) {
-  switch (name) {
-    case 'event_time':
-    case 'event_time_utc':
+  const normalized = name.replace(/\s+/g, '').replace(/_/g, '');
+  switch (normalized) {
+    case 'employeeid':
+    case 'employeeno':
+    case 'empid':
+    case 'userid':
+    case 'user':
+      return 'employee_id';
     case 'timestamp':
+    case 'datetime':
     case 'time':
-      return 'event_time';
-    case 'person':
-    case 'person_id':
-    case 'employee':
-    case 'employee_id':
-      return 'person_id';
-    case 'direction':
+    case 'eventtime':
+    case 'eventtimeutc':
+      return 'timestamp';
+    case 'event':
     case 'status':
-    case 'io':
-      return 'direction';
+    case 'direction':
+      return 'event';
+    case 'deviceserial':
+    case 'sn':
+    case 'deviceid':
+    case 'device':
+      return 'device_serial';
     default:
       return name;
   }
@@ -119,19 +137,7 @@ function buildRowError(rowNumber, code, message) {
   return { row_number: rowNumber, code, message };
 }
 
-function maybeAssign(target, key, value) {
-  if (value !== '') {
-    target[key] = value;
-  }
-}
-
-const zktecoAdapter = require('../adapters/vendors/zkteco');
-const {
-  getAdapter,
-  buildUnknownVendorResult
-} = require('../adapters/vendors/registry');
-
-function validateDeviceEventsCsv(csvText, options = {}) {
+function parseCsv(csvText, options = {}) {
   const result = {
     total_rows: 0,
     valid_rows: 0,
@@ -141,7 +147,8 @@ function validateDeviceEventsCsv(csvText, options = {}) {
     meta: {
       detected_delimiter: undefined,
       raw_headers: [],
-      normalized_headers: []
+      normalized_headers: [],
+      vendor: 'generic_punchlog'
     }
   };
 
@@ -161,6 +168,7 @@ function validateDeviceEventsCsv(csvText, options = {}) {
   }
   result.meta.detected_delimiter = delimiter;
   result.meta.raw_headers = headerCells.slice();
+
   const headerMap = {};
   headerCells.forEach((cell, index) => {
     const normalized = normalizeHeaderName(cell);
@@ -171,21 +179,22 @@ function validateDeviceEventsCsv(csvText, options = {}) {
     }
   });
 
-  const required = ['person_id', 'event_time', 'direction'];
-  const missing = required.filter(col => headerMap[col] === undefined);
+  const missing = [];
+  if (headerMap.employee_id === undefined) {
+    missing.push('employee_id');
+  }
+  if (headerMap.timestamp === undefined) {
+    missing.push('timestamp');
+  }
+  if (headerMap.device_serial === undefined) {
+    missing.push('device_serial');
+  }
+
   if (missing.length > 0) {
     const message = 'Missing required column(s): ' + missing.join(', ');
     result.errors.push(buildRowError(0, 'MISSING_REQUIRED_COLUMN', message));
     return result;
   }
-
-  const optional = [
-    'device_uid',
-    'vendor',
-    'card_number',
-    'employee_code',
-    'raw_payload'
-  ];
 
   for (let i = 1; i < lines.length; i += 1) {
     const line = lines[i];
@@ -199,36 +208,38 @@ function validateDeviceEventsCsv(csvText, options = {}) {
       return String(cells[index]).trim();
     };
 
-    const personId = getValue('person_id');
-    const eventTime = getValue('event_time');
-    const directionRaw = getValue('direction');
-    const direction = directionRaw ? directionRaw.toUpperCase() : '';
+    const employeeId = getValue('employee_id');
+    const timestampRaw = getValue('timestamp');
+    const eventRaw = getValue('event');
+    const serialRaw = getValue('device_serial');
 
     const rowErrors = [];
-
-    if (!personId) {
-      rowErrors.push({ code: 'EMPTY_PERSON_ID', message: 'person_id is required' });
+    if (!employeeId) {
+      rowErrors.push({
+        code: 'MISSING_EMPLOYEE_ID',
+        message: 'employee_id is required to map person_id'
+      });
     }
 
-    if (!parseUtcDate(eventTime)) {
-      rowErrors.push({ code: 'INVALID_EVENT_TIME', message: 'event_time is invalid' });
+    const parsedTime = timestampRaw ? parseUtcDate(timestampRaw) : null;
+    if (!timestampRaw) {
+      rowErrors.push({
+        code: 'MISSING_TIMESTAMP',
+        message: 'timestamp is required'
+      });
+    } else if (!parsedTime) {
+      rowErrors.push({
+        code: 'INVALID_TIMESTAMP',
+        message: 'timestamp must be ISO or YYYY-MM-DD HH:MM:SS'
+      });
     }
 
-    if (direction !== 'IN' && direction !== 'OUT') {
-      rowErrors.push({ code: 'INVALID_DIRECTION', message: 'direction must be IN or OUT' });
+    if (!serialRaw) {
+      rowErrors.push({
+        code: 'MISSING_DEVICE_SERIAL',
+        message: 'device_serial is required to build device_uid'
+      });
     }
-
-    const rowData = {
-      person_id: personId,
-      event_time: eventTime,
-      direction
-    };
-
-    optional.forEach(name => {
-      if (headerMap[name] !== undefined) {
-        maybeAssign(rowData, name, getValue(name));
-      }
-    });
 
     const row = {
       row_number: rowNumber,
@@ -236,7 +247,39 @@ function validateDeviceEventsCsv(csvText, options = {}) {
     };
 
     if (row.valid) {
-      row.data = rowData;
+      const direction = eventRaw ? eventRaw.trim().toUpperCase() : null;
+      const directionMapped = direction === 'IN' || direction === 'OUT' ? direction : null;
+      const mappingAudit = {
+        direction_raw: eventRaw || '',
+        direction_mapped: directionMapped,
+        device_uid_source: 'device_serial',
+        pin_source: 'employee_id'
+      };
+      if (!directionMapped) {
+        mappingAudit.note = 'direction_missing';
+      }
+
+      const originalRow = {};
+      headerCells.forEach((header, idx) => {
+        originalRow[header] = idx < cells.length ? cells[idx] : '';
+      });
+
+      row.data = {
+        person_id: employeeId,
+        event_time_utc: parsedTime.toISOString(),
+        direction: directionMapped,
+        device_uid: `generic_punchlog:${serialRaw}`,
+        vendor: 'generic_punchlog',
+        raw_payload: {
+          original_row: originalRow,
+          mapping_audit: mappingAudit,
+          identity: {
+            provider: 'generic_punchlog',
+            identifier_type: 'person_id',
+            identifier_value: employeeId
+          }
+        }
+      };
       result.valid_rows += 1;
     } else {
       row.errors = rowErrors;
@@ -253,22 +296,18 @@ function validateDeviceEventsCsv(csvText, options = {}) {
   return result;
 }
 
-function parseDeviceEventsCsv(csvText, options = {}) {
-  const vendor = options.vendor ? String(options.vendor).toLowerCase() : null;
-  if (vendor) {
-    if (vendor === 'zkteco') {
-      return zktecoAdapter.parseCsv(csvText, options);
-    }
-    if (vendor === 'generic') {
-      return validateDeviceEventsCsv(csvText, options);
-    }
-    const adapter = getAdapter(vendor);
-    if (!adapter) {
-      return buildUnknownVendorResult(vendor);
-    }
-    return adapter.parseCsv(csvText, options);
-  }
-  return validateDeviceEventsCsv(csvText, options);
+function identityExtraction(rowData = {}) {
+  const personId = typeof rowData.person_id === 'string' ? rowData.person_id.trim() : '';
+  return {
+    provider: 'generic_punchlog',
+    identifier_type: 'person_id',
+    identifier_value: personId
+  };
 }
 
-module.exports = { validateDeviceEventsCsv, parseDeviceEventsCsv };
+module.exports = {
+  id: 'generic_punchlog',
+  parseCsv,
+  identityExtraction
+};
+
