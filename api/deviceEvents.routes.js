@@ -16,6 +16,7 @@ const {
   isTimeInterpretationEnabled
 } = require('../services/timeInterpreter');
 const { resolvePersonIdForIdentifier } = require('../services/identityResolver');
+const { shouldRequireIdentityMappingForProvider } = require('../services/identityMappingPolicy');
 const {
   SYSTEM_VERSION,
   CSV_IMPORT_VERSION,
@@ -146,34 +147,49 @@ router.post('/', async (req, res) => {
     let resolvedPersonId = person_id;
 
     const useIdentityMappings = process.env.USE_IDENTITY_MAPPINGS === '1';
-    const hasIdentityInputs =
-      typeof provider === 'string' && provider.trim() &&
-      typeof identifier_type === 'string' && identifier_type.trim() &&
-      typeof identifier_value === 'string' && identifier_value.trim();
-    if (useIdentityMappings && hasIdentityInputs) {
+    const providerRaw = (typeof provider === 'string' && provider.trim())
+      ? provider
+      : (typeof vendor === 'string' && vendor.trim())
+        ? vendor
+        : 'generic';
+    const providerValue = providerRaw.trim().toLowerCase();
+    const identifierTypeValue = typeof identifier_type === 'string'
+      ? identifier_type.trim().toLowerCase()
+      : '';
+    const identifierValueValue = typeof identifier_value === 'string'
+      ? identifier_value.trim()
+      : '';
+    const hasIdentityInputs = Boolean(providerValue && identifierTypeValue && identifierValueValue);
+    if (useIdentityMappings) {
+      const requireMappings = shouldRequireIdentityMappingForProvider(providerValue);
       const resolution = await resolvePersonIdForIdentifier(db, {
         companyId,
-        provider,
-        identifierType: identifier_type,
-        identifierValue: identifier_value
+        provider: providerValue,
+        identifierType: identifierTypeValue,
+        identifierValue: identifierValueValue,
+        requireMappings
       });
       if (resolution.error === 'identity_mapping_missing') {
         return res.status(400).json({ error: 'identity_mapping_missing' });
       }
       resolvedPersonId = resolution.person_id || resolvedPersonId;
-      parsedPayload = buildIdentityPayload(parsedPayload, {
-        provider,
-        identifierType: identifier_type,
-        identifierValue: identifier_value,
-        mappingApplied: resolution.applied === true
-      });
+      if (hasIdentityInputs) {
+        parsedPayload = buildIdentityPayload(parsedPayload, {
+          provider: providerValue,
+          identifierType: identifierTypeValue,
+          identifierValue: identifierValueValue,
+          mappingApplied: resolution.applied === true
+        });
+      }
     }
 
-    await db.query(
+    const insertResult = await db.query(
       `
       INSERT INTO device_events
         (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+      ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
+      RETURNING person_id, event_time_utc, direction, device_uid, vendor
       `,
       [
         companyId,
@@ -185,6 +201,10 @@ router.post('/', async (req, res) => {
         parsedPayload
       ]
     );
+
+    if (insertResult.rowCount === 0) {
+      return res.status(200).json({ status: 'ok', dedup: true });
+    }
 
     await invalidateAttendanceCache(db, resolvedPersonId, event_time_utc, { companyId });
 
@@ -248,12 +268,14 @@ router.post(
             vendor: vendor || row.data.vendor,
             rowData: row.data
           });
+          const requireMappings = shouldRequireIdentityMappingForProvider(identityContext.provider);
 
           const resolution = await resolvePersonIdForIdentifier(db, {
             companyId,
             provider: identityContext.provider,
             identifierType: identityContext.identifierType,
-            identifierValue: identityContext.identifierValue
+            identifierValue: identityContext.identifierValue,
+            requireMappings
           });
 
           row.data.resolved_person_id = resolution.person_id || identityContext.identifierValue;
@@ -459,11 +481,13 @@ router.post(
           vendor: vendor || rowData.vendor,
           rowData
         });
+        const requireMappings = shouldRequireIdentityMappingForProvider(identityContext.provider);
         const resolution = await resolvePersonIdForIdentifier(db, {
           companyId,
           provider: identityContext.provider,
           identifierType: identityContext.identifierType,
-          identifierValue: identityContext.identifierValue
+          identifierValue: identityContext.identifierValue,
+          requireMappings
         });
         if (resolution.error === 'identity_mapping_missing') {
           return res.status(400).json({

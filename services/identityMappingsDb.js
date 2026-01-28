@@ -5,6 +5,11 @@ function normalizeText(value) {
   return value.trim();
 }
 
+function normalizeLower(value) {
+  const trimmed = normalizeText(value);
+  return trimmed ? trimmed.toLowerCase() : '';
+}
+
 function normalizeBoolean(value) {
   if (typeof value === 'boolean') {
     return value;
@@ -72,12 +77,16 @@ async function listIdentityMappings(db, {
   limit,
   offset
 }) {
+  const normalizedProvider = normalizeLower(provider);
+  const normalizedIdentifierType = normalizeLower(identifierType);
+  const normalizedIdentifierValue = normalizeText(identifierValue);
+  const normalizedPersonId = normalizeText(personId);
   const { query, params } = buildListQuery({
     companyId,
-    provider,
-    identifierType,
-    identifierValue,
-    personId,
+    provider: normalizedProvider || null,
+    identifierType: normalizedIdentifierType || null,
+    identifierValue: normalizedIdentifierValue || null,
+    personId: normalizedPersonId || null,
     active,
     limit,
     offset
@@ -87,20 +96,23 @@ async function listIdentityMappings(db, {
 }
 
 async function getIdentityMapping(db, companyId, provider, identifierType, identifierValue) {
+  const normalizedProvider = normalizeLower(provider);
+  const normalizedIdentifierType = normalizeLower(identifierType);
+  const normalizedIdentifierValue = normalizeText(identifierValue);
   const res = await db.query(`
     SELECT company_id, provider, identifier_type, identifier_value, person_id,
            active, metadata, created_at, updated_at
     FROM identity_mappings
     WHERE company_id = $1 AND provider = $2 AND identifier_type = $3 AND identifier_value = $4
     LIMIT 1
-  `, [companyId, provider, identifierType, identifierValue]);
+  `, [companyId, normalizedProvider, normalizedIdentifierType, normalizedIdentifierValue]);
 
   return res.rows[0] || null;
 }
 
 async function upsertIdentityMapping(db, companyId, payload) {
-  const provider = normalizeText(payload.provider);
-  const identifierType = normalizeText(payload.identifier_type);
+  const provider = normalizeLower(payload.provider);
+  const identifierType = normalizeLower(payload.identifier_type);
   const identifierValue = normalizeText(payload.identifier_value);
   const personId = normalizeText(payload.person_id);
 

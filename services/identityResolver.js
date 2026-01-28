@@ -1,14 +1,26 @@
+function normalizeLower(value) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed.toLowerCase() : '';
+}
+
 async function resolvePersonIdForIdentifier(db, {
   companyId,
   provider,
   identifierType,
-  identifierValue
+  identifierValue,
+  requireMappings
 }) {
   const useMappings = process.env.USE_IDENTITY_MAPPINGS === '1';
-  const requireMappings = process.env.REQUIRE_IDENTITY_MAPPINGS === '1';
+  const requireMappingsEnv = process.env.REQUIRE_IDENTITY_MAPPINGS === '1';
+  const requireMappingsEffective = (typeof requireMappings === 'boolean')
+    ? requireMappings
+    : requireMappingsEnv;
 
-  const providerValue = typeof provider === 'string' ? provider.trim() : '';
-  const typeValue = typeof identifierType === 'string' ? identifierType.trim() : '';
+  const providerValue = normalizeLower(provider);
+  const typeValue = normalizeLower(identifierType);
   const value = typeof identifierValue === 'string' ? identifierValue.trim() : '';
 
   if (!useMappings) {
@@ -20,7 +32,7 @@ async function resolvePersonIdForIdentifier(db, {
   }
 
   if (!providerValue || !typeValue || !value) {
-    if (requireMappings) {
+    if (requireMappingsEffective) {
       return { error: 'identity_mapping_missing' };
     }
     return {
@@ -42,7 +54,7 @@ async function resolvePersonIdForIdentifier(db, {
   `, [companyId, providerValue, typeValue, value]);
 
   if (res.rows.length === 0) {
-    if (requireMappings) {
+    if (requireMappingsEffective) {
       return { error: 'identity_mapping_missing' };
     }
     return {

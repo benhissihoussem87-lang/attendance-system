@@ -50,6 +50,73 @@ function buildUnknownVendorResult(vendor) {
   };
 }
 
+function fallbackIdentityContext({ vendor, rowData }) {
+  const normalizeString = value => {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    const trimmed = value.trim();
+    return trimmed ? trimmed : '';
+  };
+
+  const pickFirstNonEmpty = (data, keys) => {
+    if (!data || typeof data !== 'object') {
+      return '';
+    }
+    for (let i = 0; i < keys.length; i += 1) {
+      const candidate = normalizeString(data[keys[i]]);
+      if (candidate) {
+        return candidate;
+      }
+    }
+    return '';
+  };
+
+  const providerRaw = vendor || (rowData && rowData.vendor) || 'generic';
+  const provider = typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase() : 'generic';
+  const identifierType = provider === 'zkteco' ? 'pin' : 'person_id';
+  let identifierValue = '';
+  if (provider === 'zkteco') {
+    identifierValue = pickFirstNonEmpty(rowData, [
+      'userid',
+      'user_id',
+      'badgenumber',
+      'badge_number',
+      'pin',
+      'person_id'
+    ]);
+  } else if (provider === 'anviz') {
+    identifierValue = pickFirstNonEmpty(rowData, [
+      'pin',
+      'number',
+      'empid',
+      'employee_id',
+      'person_id'
+    ]);
+  } else if (provider === 'generic_punchlog') {
+    identifierValue = pickFirstNonEmpty(rowData, [
+      'employee_id',
+      'emp_id',
+      'userid',
+      'person_id'
+    ]);
+  } else {
+    identifierValue = pickFirstNonEmpty(rowData, [
+      'person_id',
+      'employee_id',
+      'pin',
+      'userid',
+      'badgenumber'
+    ]);
+  }
+
+  return {
+    provider,
+    identifier_type: identifierType,
+    identifier_value: identifierValue
+  };
+}
+
 function getIdentityContext({ vendor, rowData }) {
   const adapter = getAdapter(vendor || (rowData && rowData.vendor));
   if (adapter && typeof adapter.identityExtraction === 'function') {
@@ -59,16 +126,7 @@ function getIdentityContext({ vendor, rowData }) {
     }
   }
 
-  const providerRaw = vendor || (rowData && rowData.vendor) || 'generic';
-  const provider = typeof providerRaw === 'string' ? providerRaw.trim().toLowerCase() : 'generic';
-  const identifierType = provider === 'zkteco' ? 'pin' : 'person_id';
-  const identifierValue = rowData && typeof rowData.person_id === 'string' ? rowData.person_id.trim() : '';
-
-  return {
-    provider,
-    identifier_type: identifierType,
-    identifier_value: identifierValue
-  };
+  return fallbackIdentityContext({ vendor, rowData });
 }
 
 module.exports = {
@@ -76,5 +134,6 @@ module.exports = {
   getSupportedVendors,
   getAdapter,
   buildUnknownVendorResult,
-  getIdentityContext
+  getIdentityContext,
+  fallbackIdentityContext
 };

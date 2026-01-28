@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
+const { getIdentityMappingPolicy } = require('../services/identityMappingPolicy');
 
 async function getColumnSet(tableName) {
   const res = await db.query(
@@ -442,6 +443,7 @@ router.get('/mode', (req, res) => {
     allow_test_endpoints: toBool(process.env.ALLOW_TEST_ENDPOINTS),
     use_identity_mappings: toBool(process.env.USE_IDENTITY_MAPPINGS),
     require_identity_mappings: toBool(process.env.REQUIRE_IDENTITY_MAPPINGS),
+    identity_mapping_policy: getIdentityMappingPolicy(),
     use_employees_registry: toBool(process.env.USE_EMPLOYEES_REGISTRY),
     use_employee_assignments: toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS)
   });
