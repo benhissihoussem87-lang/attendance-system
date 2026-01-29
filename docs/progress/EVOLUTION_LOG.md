@@ -22,6 +22,7 @@
   - `.spectral.yaml`
   - `tests/contracts/openapi.lint.test.js`
   - `docs/adr/ADR-openapi-skeleton.md`
+- Tuned Spectral rules to reduce warning noise while keeping drift checks (operation IDs, unused components).
 
 ### Invariants confirmed/added
 - Env booleans are interpreted only via `services/envBool.toBool()`.

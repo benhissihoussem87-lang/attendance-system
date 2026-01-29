@@ -17,3 +17,8 @@ and is kept minimal to reduce maintenance overhead.
 - Easier integration planning and client onboarding.
 - A lint gate to catch accidental contract drift.
 - A foundation for future client generation and API coverage expansion.
+
+## Lint strategy
+- Early phase linting focuses on structural correctness and stable operation IDs, not
+  descriptive fields like contact info or operation descriptions.
+- We will tighten lint rules as coverage grows.

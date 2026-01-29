@@ -1,6 +1,9 @@
 extends:
   - spectral:oas
 rules:
+  info-contact: off
+  info-description: off
+  operation-description: off
   operation-operationId: true
   oas3-unused-component: true
   oas3-valid-media-example: false
