@@ -1,0 +1,6 @@
+extends:
+  - spectral:oas
+rules:
+  operation-operationId: true
+  oas3-unused-component: true
+  oas3-valid-media-example: false

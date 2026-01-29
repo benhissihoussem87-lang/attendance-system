@@ -112,6 +112,8 @@ if ($mode.use_employee_assignments) {
 
 Run-NodeTest 'services\identityMappingPolicy.test.js'
 Run-NodeTest 'api\opsTest.allowTestEndpoints.test.js'
+Run-NodeTest 'contracts\previewOutput.contract.test.js'
+Run-NodeTest 'contracts\openapi.lint.test.js'
 Run-NodeTest 'device_events\identity_context_fallback_keys.test.js'
 Run-NodeTest 'adapters\simplePinCsvAdapter_dates.test.js'
 

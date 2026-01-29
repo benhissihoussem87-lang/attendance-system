@@ -1,0 +1,262 @@
+openapi: 3.1.0
+info:
+  title: Attendance System API
+  version: 0.1.0
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: ops
+  - name: device-events
+  - name: identity-mappings
+  - name: employees-registry
+paths:
+  /api/ops/health:
+    get:
+      tags: [ops]
+      operationId: getOpsHealth
+      responses:
+        "200":
+          description: OK
+  /api/ops/ready:
+    get:
+      tags: [ops]
+      operationId: getOpsReady
+      responses:
+        "200":
+          description: OK
+  /api/ops/test/mode:
+    get:
+      tags: [ops]
+      operationId: getOpsTestMode
+      responses:
+        "200":
+          description: Mode snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeResponse"
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/device-events/import/preview:
+    post:
+      tags: [device-events]
+      operationId: previewDeviceEventsCsv
+      parameters:
+        - in: query
+          name: company_id
+          schema:
+            type: string
+            default: DEFAULT
+        - in: header
+          name: x-vendor
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Preview response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewResponse"
+  /api/identity-mappings:
+    put:
+      tags: [identity-mappings]
+      operationId: upsertIdentityMapping
+      parameters:
+        - in: query
+          name: company_id
+          schema:
+            type: string
+            default: DEFAULT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityMappingUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+        "400":
+          description: Invalid request (e.g., employee_not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/employees-registry/{person_id}:
+    put:
+      tags: [employees-registry]
+      operationId: upsertEmployee
+      parameters:
+        - in: path
+          name: person_id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: company_id
+          schema:
+            type: string
+            default: DEFAULT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+components:
+  schemas:
+    ModeResponse:
+      type: object
+      required:
+        - allow_test_endpoints
+        - use_identity_mappings
+        - require_identity_mappings
+        - identity_mapping_policy
+        - use_employees_registry
+        - use_employee_assignments
+      properties:
+        allow_test_endpoints:
+          type: boolean
+        use_identity_mappings:
+          type: boolean
+        require_identity_mappings:
+          type: boolean
+        identity_mapping_policy:
+          type: string
+        use_employees_registry:
+          type: boolean
+        use_employee_assignments:
+          type: boolean
+    PreviewResponse:
+      type: object
+      required:
+        - system_version
+        - contract
+        - import_version
+        - total_rows
+        - valid_rows
+        - invalid_rows
+        - errors
+        - sample_valid_rows
+        - sample_rows
+      properties:
+        system_version:
+          type: string
+        contract:
+          type: string
+        import_version:
+          type: string
+        total_rows:
+          type: integer
+        valid_rows:
+          type: integer
+        invalid_rows:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewError"
+        sample_valid_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewSampleRow"
+        sample_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewSampleRow"
+        sample_invalid_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewSampleRow"
+        error_intelligence:
+          type: object
+    PreviewError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        row_number:
+          type: integer
+    PreviewSampleRow:
+      type: object
+      required:
+        - row_number
+        - data
+      properties:
+        row_number:
+          type: integer
+        data:
+          type: object
+          properties:
+            resolved_person_id:
+              type: string
+            identity_mapping_applied:
+              type: boolean
+            identity_mapping_reason:
+              type: string
+            vendor:
+              type: string
+            provider:
+              type: string
+            device_uid:
+              type: string
+    IdentityMappingUpsertRequest:
+      type: object
+      required:
+        - provider
+        - identifier_type
+        - identifier_value
+        - person_id
+      properties:
+        provider:
+          type: string
+        identifier_type:
+          type: string
+        identifier_value:
+          type: string
+        person_id:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+    EmployeeUpsertRequest:
+      type: object
+      properties:
+        employee_code:
+          type: string
+        full_name:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string

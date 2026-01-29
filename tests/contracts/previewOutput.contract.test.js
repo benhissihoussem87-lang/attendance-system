@@ -197,7 +197,10 @@ async function testPreviewContract() {
     );
   }
 
-  await putEmployee(baseUrl, companyId, personVendor, employeePayload);
+  if (mode.use_employees_registry) {
+    // When registry is enabled, mappings require an existing employee.
+    await putEmployee(baseUrl, companyId, personVendor, employeePayload);
+  }
   await putIdentityMapping(baseUrl, companyId, {
     provider: vendorProvider,
     identifier_type: 'pin',
