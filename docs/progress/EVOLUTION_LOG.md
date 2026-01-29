@@ -17,11 +17,13 @@
   - `docs/contracts/preview-output-contract.md`
   - `tests/contracts/previewOutput.contract.test.js`
 - Updated contract test to upsert employee before identity mapping to avoid `employee_not_found`.
-- Added OpenAPI skeleton, lint rules, and contract lint test:
+- Added OpenAPI skeleton, lint rules, and contract lint tests:
   - `openapi/openapi.yaml`
   - `.spectral.yaml`
   - `tests/contracts/openapi.lint.test.js`
+  - `tests/contracts/openapi.coverage.test.js`
   - `docs/adr/ADR-openapi-skeleton.md`
+  - `docs/adr/ADR-contract-driven-openapi.md`
 - Tuned Spectral rules to reduce warning noise while keeping drift checks (operation IDs, unused components).
 
 ### Invariants confirmed/added
