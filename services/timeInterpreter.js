@@ -1,5 +1,7 @@
+const { toBool } = require('./envBool');
+
 const ENABLE_CSV_TIME_INTERPRETATION =
-  process.env.ENABLE_CSV_TIME_INTERPRETATION === 'true';
+  toBool(process.env.ENABLE_CSV_TIME_INTERPRETATION);
 
 function hasTimezone(value) {
   return /[Zz]|[+-]\d{2}:\d{2}$/.test(value);

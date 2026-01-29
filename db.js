@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { toBool } = require('./services/envBool');
 
 const requiredVars = ['PGHOST', 'PGUSER', 'PGDATABASE'];
 const missingVars = requiredVars.filter(name => !process.env[name]);
@@ -14,7 +15,7 @@ const pool = new Pool({
   user: process.env.PGUSER,
   password: process.env.PGPASSWORD,
   database: process.env.PGDATABASE,
-  ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : undefined
+  ssl: toBool(process.env.PGSSL) ? { rejectUnauthorized: false } : undefined
 });
 
 module.exports = {

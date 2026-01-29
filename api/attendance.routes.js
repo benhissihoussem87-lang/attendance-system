@@ -29,9 +29,9 @@ const {
   SYSTEM_VERSION
 } = require('../contracts/systemContracts');
 
-const ENABLE_DAY_BOUNDARY_DEBUG = process.env.ENABLE_DAY_BOUNDARY_DEBUG === 'true';
-const ENABLE_CACHE_DIAGNOSTIC = process.env.ENABLE_CACHE_DIAGNOSTIC === 'true';
-const USE_DERIVED_WORK_DATE = process.env.USE_DERIVED_WORK_DATE === 'true';
+const ENABLE_DAY_BOUNDARY_DEBUG = toBool(process.env.ENABLE_DAY_BOUNDARY_DEBUG);
+const ENABLE_CACHE_DIAGNOSTIC = toBool(process.env.ENABLE_CACHE_DIAGNOSTIC);
+const USE_DERIVED_WORK_DATE = toBool(process.env.USE_DERIVED_WORK_DATE);
 
 function withCacheMeta(record, cacheMeta) {
   return {

@@ -1,3 +1,5 @@
+const { toBool } = require('../services/envBool');
+
 function getEnv() {
   const requiredPgVars = ['PGHOST', 'PGUSER', 'PGDATABASE'];
   const missingPgVars = requiredPgVars.filter(name => !process.env[name]);
@@ -18,10 +20,10 @@ function getEnv() {
       port: Number.isNaN(pgPort) ? 5432 : pgPort
     },
     flags: {
-      useCompanyConfigDb: process.env.USE_COMPANY_CONFIG_DB === 'true',
-      enableDayBoundaryDebug: process.env.ENABLE_DAY_BOUNDARY_DEBUG === 'true',
-      useDerivedWorkDate: process.env.USE_DERIVED_WORK_DATE === 'true',
-      enableCsvTimeInterpretation: process.env.ENABLE_CSV_TIME_INTERPRETATION === 'true'
+      useCompanyConfigDb: toBool(process.env.USE_COMPANY_CONFIG_DB),
+      enableDayBoundaryDebug: toBool(process.env.ENABLE_DAY_BOUNDARY_DEBUG),
+      useDerivedWorkDate: toBool(process.env.USE_DERIVED_WORK_DATE),
+      enableCsvTimeInterpretation: toBool(process.env.ENABLE_CSV_TIME_INTERPRETATION)
     }
   };
 }

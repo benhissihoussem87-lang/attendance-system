@@ -21,8 +21,9 @@ const {
   ATTENDANCE_OUTPUT_CONTRACT,
   SYSTEM_VERSION
 } = require('../contracts/systemContracts');
+const { toBool } = require('../services/envBool');
 
-const USE_DERIVED_WORK_DATE = process.env.USE_DERIVED_WORK_DATE === 'true';
+const USE_DERIVED_WORK_DATE = toBool(process.env.USE_DERIVED_WORK_DATE);
 
 function isValidDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {

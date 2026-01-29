@@ -1,5 +1,6 @@
 const { deriveWorkDate } = require('./dayBoundary');
 const { getCompanyConfig } = require('./companyConfigProvider');
+const { toBool } = require('./envBool');
 
 async function invalidateAttendanceCache(db, personId, eventTimeUtc, opts = {}) {
   const companyId = opts.companyId || 'DEFAULT';
@@ -15,7 +16,7 @@ async function invalidateAttendanceCache(db, personId, eventTimeUtc, opts = {}) 
 
   // Derived work_date (anchored boundary aware) when enabled
   let derivedDate = null;
-  if (process.env.USE_DERIVED_WORK_DATE === 'true') {
+  if (toBool(process.env.USE_DERIVED_WORK_DATE)) {
     const config = await getCompanyConfig(db, companyId);
     const derived = deriveWorkDate({
       event_time_utc: dt.toISOString(),
