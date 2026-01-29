@@ -70,15 +70,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/PreviewResponse"
   /api/identity-mappings:
+    get:
+      tags: [identity-mappings]
+      operationId: listIdentityMappings
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - in: query
+          name: provider
+          schema:
+            type: string
+        - in: query
+          name: identifier_type
+          schema:
+            type: string
+        - in: query
+          name: identifier_value
+          schema:
+            type: string
+        - in: query
+          name: person_id
+          schema:
+            type: string
+        - $ref: "#/components/parameters/active_query"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Identity mappings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMappingsListResponse"
     put:
       tags: [identity-mappings]
       operationId: upsertIdentityMapping
       parameters:
-        - in: query
-          name: company_id
-          schema:
-            type: string
-            default: DEFAULT
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
       requestBody:
         required: true
         content:
@@ -88,13 +117,124 @@ paths:
       responses:
         "200":
           description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMapping"
         "400":
           description: Invalid request (e.g., employee_not_found)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict (identifier already mapped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictResponse"
+  /api/identity-mappings/lookup:
+    get:
+      tags: [identity-mappings]
+      operationId: lookupIdentityMapping
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - in: query
+          name: provider
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: identifier_type
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: identifier_value
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Identity mapping lookup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMappingLookupResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Identity mapping not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/employees-registry:
+    get:
+      tags: [employees-registry]
+      operationId: listEmployeesRegistry
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - in: query
+          name: person_id
+          schema:
+            type: string
+        - in: query
+          name: employee_code
+          schema:
+            type: string
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Employees registry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/employees-registry/{person_id}:
+    get:
+      tags: [employees-registry]
+      operationId: getEmployee
+      parameters:
+        - in: path
+          name: person_id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Employee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Employee not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     put:
       tags: [employees-registry]
       operationId: upsertEmployee
@@ -104,11 +244,8 @@ paths:
           required: true
           schema:
             type: string
-        - in: query
-          name: company_id
-          schema:
-            type: string
-            default: DEFAULT
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
       requestBody:
         required: true
         content:
@@ -118,7 +255,58 @@ paths:
       responses:
         "200":
           description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  parameters:
+    company_id:
+      name: company_id
+      in: query
+      schema:
+        type: string
+        default: DEFAULT
+    x-company-id:
+      name: x-company-id
+      in: header
+      schema:
+        type: string
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        minimum: 1
+        maximum: 200
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    active_query:
+      name: active
+      in: query
+      schema:
+        type: string
+        enum:
+          - "true"
+          - "false"
   schemas:
     ModeResponse:
       type: object
@@ -240,6 +428,52 @@ components:
           type: boolean
         metadata:
           type: object
+    IdentityMapping:
+      type: object
+      properties:
+        company_id:
+          type: string
+        provider:
+          type: string
+        identifier_type:
+          type: string
+        identifier_value:
+          type: string
+        person_id:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    IdentityMappingLookupResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        provider:
+          type: string
+        identifier_type:
+          type: string
+        identifier_value:
+          type: string
+        person_id:
+          type: string
+    IdentityMappingsListResponse:
+      type: object
+      required:
+        - value
+        - Count
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdentityMapping"
+        Count:
+          type: integer
     EmployeeUpsertRequest:
       type: object
       properties:
@@ -247,10 +481,46 @@ components:
           type: string
         full_name:
           type: string
+        default_rule_set_id:
+          type: string
+          format: uuid
         active:
           type: boolean
         metadata:
           type: object
+    EmployeesListResponse:
+      type: object
+      required:
+        - value
+        - Count
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/Employee"
+        Count:
+          type: integer
+    Employee:
+      type: object
+      properties:
+        company_id:
+          type: string
+        person_id:
+          type: string
+        employee_code:
+          type: string
+        full_name:
+          type: string
+        default_rule_set_id:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
     ErrorResponse:
       type: object
       required:
@@ -259,4 +529,15 @@ components:
         error:
           type: string
         detail:
+          type: string
+    ConflictResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        existing_person_id:
           type: string
