@@ -16,6 +16,7 @@ const { getCompanyConfig } = require('../services/companyConfigProvider');
 const { getEmployee } = require('../services/employeesDb');
 const { resolveRuleSetIdForDate } = require('../services/employeeAssignmentsService');
 const { getEmployeeDisplay } = require('../services/employeeDirectory');
+const { toBool } = require('../services/envBool');
 const {
   buildComputationSignature,
   isSignatureCompatible
@@ -137,7 +138,7 @@ router.get('/', async (req, res) => {
     if (ruleSetIdParam && !ruleSetIdRegex.test(ruleSetIdParam)) {
       return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a UUID' });
     }
-    const assignmentsEnabled = process.env.USE_EMPLOYEE_ASSIGNMENTS === '1';
+    const assignmentsEnabled = toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS);
     let assignmentResolution = null;
     let resolvedRuleSetId = ruleSetIdParam || null;
     if (assignmentsEnabled) {
@@ -282,7 +283,7 @@ router.get('/', async (req, res) => {
           cache_valid: true,
           cache_reason: 'signature_match'
         };
-        if (process.env.ALLOW_TEST_ENDPOINTS === 'true') {
+        if (toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
           // TEST-ONLY: stabilize cache tests without changing production behavior.
           cacheMeta = {
             cache_valid: true,

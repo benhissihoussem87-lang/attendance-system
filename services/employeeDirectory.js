@@ -1,5 +1,7 @@
+const { toBool } = require('./envBool');
+
 async function getEmployeeDisplay(db, companyId, personId) {
-  if (process.env.USE_EMPLOYEES_REGISTRY !== '1') {
+  if (!toBool(process.env.USE_EMPLOYEES_REGISTRY)) {
     return null;
   }
 
