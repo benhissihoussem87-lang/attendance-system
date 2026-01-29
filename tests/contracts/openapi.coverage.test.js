@@ -7,7 +7,9 @@ const requiredPaths = [
   '/api/ops/ready',
   '/api/ops/test/mode',
   '/api/device-events/import/preview',
+  '/api/employees-registry',
   '/api/identity-mappings',
+  '/api/identity-mappings/lookup',
   '/api/employees-registry/{person_id}'
 ];
 
