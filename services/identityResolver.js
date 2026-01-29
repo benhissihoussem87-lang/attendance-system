@@ -1,3 +1,5 @@
+const { toBool } = require('./envBool');
+
 function normalizeLower(value) {
   if (typeof value !== 'string') {
     return '';
@@ -13,8 +15,8 @@ async function resolvePersonIdForIdentifier(db, {
   identifierValue,
   requireMappings
 }) {
-  const useMappings = process.env.USE_IDENTITY_MAPPINGS === '1';
-  const requireMappingsEnv = process.env.REQUIRE_IDENTITY_MAPPINGS === '1';
+  const useMappings = toBool(process.env.USE_IDENTITY_MAPPINGS);
+  const requireMappingsEnv = toBool(process.env.REQUIRE_IDENTITY_MAPPINGS);
   const requireMappingsEffective = (typeof requireMappings === 'boolean')
     ? requireMappings
     : requireMappingsEnv;

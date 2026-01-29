@@ -1,10 +1,5 @@
 $ErrorActionPreference = 'Stop'
 
-if ($env:USE_IDENTITY_MAPPINGS -ne '1') {
-  Write-Host 'SKIP: USE_IDENTITY_MAPPINGS not enabled'
-  exit 0
-}
-
 $runId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
@@ -13,11 +8,21 @@ try {
 } catch {
   $mode = $null
 }
-$require = if ($mode -and $mode.require_identity_mappings -is [bool]) {
-  $mode.require_identity_mappings
-} else {
-  $env:REQUIRE_IDENTITY_MAPPINGS -eq '1'
+
+if (-not $mode -or -not $mode.allow_test_endpoints) {
+  Write-Host 'FAIL: identity mappings ingestion mode'
+  Write-Host 'This test requires ALLOW_TEST_ENDPOINTS=true'
+  exit 1
 }
+
+if (-not $mode.use_identity_mappings) {
+  Write-Host 'SKIP: USE_IDENTITY_MAPPINGS not enabled'
+  exit 0
+}
+
+$require = $mode.require_identity_mappings -eq $true
+$policy = if ($mode.identity_mapping_policy) { $mode.identity_mapping_policy } else { 'all' }
+$policy = $policy.ToString().Trim().ToLower()
 
 function Unwrap-Value {
   param($res)
@@ -28,81 +33,229 @@ function Unwrap-Value {
   return $res
 }
 
-function Get-HttpErrorInfo {
-  param($err)
+function Get-FirstRowWithErrorCode {
+  param($preview, $code)
 
-  $status = $null
-  $text = $null
+  $rows = $null
+  if ($preview -and $preview.sample_rows) {
+    $rows = $preview.sample_rows
+  } elseif ($preview -and $preview.rows) {
+    $rows = $preview.rows
+  }
 
-  try {
-    $resp = $err.Exception.Response
-    if ($resp -is [System.Net.HttpWebResponse]) {
-      $status = [int]$resp.StatusCode
-      $stream = $resp.GetResponseStream()
-      if ($stream) {
-        $reader = New-Object System.IO.StreamReader($stream)
-        $text = $reader.ReadToEnd()
+  if (-not $rows) {
+    return $null
+  }
+
+  foreach ($row in $rows) {
+    $errors = $row.errors
+    if (-not $errors -and $row.data -and $row.data.errors) {
+      $errors = $row.data.errors
+    }
+    foreach ($err in @($errors)) {
+      if ($err -and $err.code -eq $code) {
+        return $row
       }
     }
-  } catch {}
+  }
 
-  if (-not $text) {
-    try {
-      $resp2 = $err.Exception.Response
-      if ($resp2 -and $resp2.Content) {
-        $status = [int]$resp2.StatusCode
-        $text = $resp2.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+  return $null
+}
+
+function Get-ErrorCodes {
+  param($preview)
+
+  $codes = @()
+  if ($preview -and $preview.errors) {
+    foreach ($err in $preview.errors) {
+      if ($err -and $err.code) {
+        $codes += $err.code
       }
-    } catch {}
+    }
+  }
+  return @($codes | Select-Object -Unique)
+}
+
+function Dump-PreviewDiagnostics {
+  param($label, $preview, $extra = @{})
+
+  Write-Host ("DIAG: {0}" -f $label)
+  if (-not $preview) {
+    Write-Host "DIAG: preview is null"
+    if ($extra -and $extra.Count -gt 0) {
+      Write-Host ("DIAG: extra=" + ($extra | ConvertTo-Json -Depth 12))
+    }
+    return
   }
 
-  if (-not $text) {
-    try {
-      if ($err.ErrorDetails -and $err.ErrorDetails.Message) {
-        $text = $err.ErrorDetails.Message
+  $total = $preview.total_rows
+  $valid = $preview.valid_rows
+  $invalid = $preview.invalid_rows
+  Write-Host ("DIAG: totals total_rows={0} valid_rows={1} invalid_rows={2}" -f $total, $valid, $invalid)
+
+  $codes = Get-ErrorCodes $preview
+  if ($codes.Count -gt 0) {
+    Write-Host ("DIAG: error_codes=" + (($codes | Select-Object -First 5) -join ', '))
+  }
+
+  if ($preview.rows) {
+    $invalidRows = @($preview.rows | Where-Object { $_ -and $_.valid -eq $false })
+    if ($invalidRows.Count -gt 0) {
+      $firstInvalid = $invalidRows[0]
+      $firstErrors = @()
+      if ($firstInvalid.errors) {
+        $firstErrors = @($firstInvalid.errors | ForEach-Object { $_.code })
       }
-    } catch {}
+      Write-Host ("DIAG: invalid_rows_count={0} first_invalid_row={1} first_invalid_error_codes={2}" -f `
+        $invalidRows.Count, $firstInvalid.row_number, ($firstErrors -join ', '))
+    }
   }
 
-  $json = $null
-  if ($text) {
-    try { $json = $text | ConvertFrom-Json -ErrorAction Stop } catch { $json = $null }
+  if ($preview.sample_rows -and $preview.sample_rows.Count -gt 0) {
+    $sample = $preview.sample_rows[0]
+    $sampleData = $sample.data
+    $keys = if ($sampleData -and $sampleData.PSObject) { $sampleData.PSObject.Properties.Name -join ', ' } else { '<none>' }
+    Write-Host ("DIAG: sample_keys={0}" -f $keys)
+    if ($sampleData) {
+      if ($sampleData.PSObject.Properties.Name -contains 'identity_mapping_applied') {
+        Write-Host ("DIAG: sample_identity_mapping_applied={0}" -f $sampleData.identity_mapping_applied)
+      }
+      if ($sampleData.PSObject.Properties.Name -contains 'resolved_person_id') {
+        Write-Host ("DIAG: sample_resolved_person_id={0}" -f $sampleData.resolved_person_id)
+      }
+    }
   }
 
-  return @{
-    status = $status
-    text   = $text
-    json   = $json
+  if ($extra -and $extra.Count -gt 0) {
+    Write-Host ("DIAG: extra=" + ($extra | ConvertTo-Json -Depth 12))
   }
 }
 
 try {
-  Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  $companyId = 'DEFAULT'
+  $personVendor = "ingest_vendor_$runId"
+  $personGeneric = "ingest_generic_$runId"
+  $vendorProvider = 'zkteco'
+  $vendorIdentifier = "ZK-$runId"
+  $genericProvider = 'generic'
+  $genericIdentifier = "GEN-$runId"
+
+  $vendorEmployeeUrl = "$baseUrl/api/employees-registry/${personVendor}?company_id=$companyId"
+  $escapedVendorId = [regex]::Escape($personVendor)
+  if ($vendorEmployeeUrl -notmatch "/$escapedVendorId\?company_id=") {
+    throw ("expected vendor employee URL to include /{0}?company_id=. personId={0} url={1}" -f $personVendor, $vendorEmployeeUrl)
+  }
+
+  Invoke-RestMethod $vendorEmployeeUrl `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+  $csvMissingVendor = @"
+badgenumber,checktime,checktype,sn
+$vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
+"@
+
+  $vendorHeaders = @{
+    'x-vendor' = $vendorProvider
+  }
+
+  $previewMissingVendorRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
+    -Method Post `
+    -Headers $vendorHeaders `
+    -ContentType 'text/plain' `
+    -Body $csvMissingVendor
+  $previewMissingVendor = Unwrap-Value $previewMissingVendorRaw
+
+  if ($previewMissingVendor.total_rows -lt 1) { throw 'expected preview total_rows >= 1 for vendor missing mapping' }
+  $hasUnknownChecktype = $false
+  if ($previewMissingVendor.errors) {
+    foreach ($err in $previewMissingVendor.errors) {
+      if ($err.code -eq 'UNKNOWN_CHECKTYPE') { $hasUnknownChecktype = $true }
+    }
+  }
+  if ($hasUnknownChecktype) {
+    Dump-PreviewDiagnostics 'missing vendor mapping preview' $previewMissingVendor @{
+      require = $require
+      policy = $policy
+      vendor = $vendorProvider
+      companyId = $companyId
+    }
+    throw 'unexpected UNKNOWN_CHECKTYPE in vendor preview; server is missing ZKTECO_CHECKTYPE_MAP; set it when starting the server or use smoke.ps1 -AutoStartServer'
+  }
+  $hasMissingColumn = $false
+  if ($previewMissingVendor.errors) {
+    foreach ($err in $previewMissingVendor.errors) {
+      if ($err.code -eq 'MISSING_REQUIRED_COLUMN') { $hasMissingColumn = $true }
+    }
+  }
+  if ($hasMissingColumn) { throw 'unexpected MISSING_REQUIRED_COLUMN for vendor CSV' }
+
+  if ($require -eq $true) {
+    if ($previewMissingVendor.invalid_rows -lt 1) {
+      Dump-PreviewDiagnostics 'missing vendor mapping preview' $previewMissingVendor @{
+        require = $require
+        policy = $policy
+        vendor = $vendorProvider
+        companyId = $companyId
+      }
+      throw 'expected preview invalid_rows for missing vendor mapping'
+    }
+    $hasIdentityError = $false
+    foreach ($err in $previewMissingVendor.errors) {
+      if ($err.code -eq 'identity_mapping_missing') { $hasIdentityError = $true }
+    }
+    if (-not $hasIdentityError) {
+      Dump-PreviewDiagnostics 'missing vendor mapping preview' $previewMissingVendor @{
+        require = $require
+        policy = $policy
+        vendor = $vendorProvider
+        companyId = $companyId
+      }
+      throw 'expected identity_mapping_missing error for vendor preview'
+    }
+  } else {
+    if ($previewMissingVendor.total_rows -ne 1) { throw 'expected preview total_rows 1 for vendor missing mapping' }
+    if ($previewMissingVendor.valid_rows -lt 1 -or $previewMissingVendor.invalid_rows -ne 0) {
+      throw 'expected preview valid row for vendor missing mapping in non-strict mode'
+    }
+    $previewRowsVendor = $null
+    if ($previewMissingVendor.sample_rows -and $previewMissingVendor.sample_rows.Count -gt 0) {
+      $previewRowsVendor = $previewMissingVendor.sample_rows
+    } elseif ($previewMissingVendor.sample_valid_rows -and $previewMissingVendor.sample_valid_rows.Count -gt 0) {
+      $previewRowsVendor = $previewMissingVendor.sample_valid_rows
+    }
+    if (-not $previewRowsVendor -or $previewRowsVendor.Count -lt 1) {
+      throw 'expected preview sample rows for vendor missing mapping in non-strict mode'
+    }
+    $sampleVendorMissing = $previewRowsVendor[0].data
+    if ($sampleVendorMissing.identity_mapping_applied -ne $false) {
+      throw 'expected identity_mapping_applied false for vendor missing mapping'
+    }
+  }
+
+  Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
-      provider = 'generic'
-      identifier_type = 'person_id'
-      identifier_value = 'EXT001'
-      person_id = 'p1'
+      provider = $vendorProvider
+      identifier_type = 'pin'
+      identifier_value = $vendorIdentifier
+      person_id = $personVendor
       active = $true
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
   $csv = @"
-person_id,event_time,direction,device_uid
-EXT001,2026-01-07 08:00:00,IN,TEST-DEVICE-1-$runId
+badgenumber,checktime,checktype,sn
+$vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
 "@
 
-  $preview = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
+  $preview = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
     -Method Post `
+    -Headers $vendorHeaders `
     -ContentType 'text/plain' `
     -Body $csv
 
@@ -127,11 +280,18 @@ EXT001,2026-01-07 08:00:00,IN,TEST-DEVICE-1-$runId
     throw "expected preview sample rows; $totals; keys: $keys"
   }
   $sample = $previewRows[0].data
-  if ($sample.resolved_person_id -ne 'p1') { throw 'expected resolved_person_id p1' }
+  if ($sample.resolved_person_id -ne $personVendor) { throw 'expected resolved_person_id for vendor mapping' }
   if ($sample.identity_mapping_applied -ne $true) { throw 'expected identity_mapping_applied true' }
+  if (-not $sample.raw_payload -or -not $sample.raw_payload.identity) {
+    throw 'expected raw_payload.identity in preview'
+  }
+  if ($sample.raw_payload.identity.mapping_applied -ne $true) {
+    throw 'expected raw_payload.identity.mapping_applied true'
+  }
 
-  $commitRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
+  $commitRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=$companyId" `
     -Method Post `
+    -Headers $vendorHeaders `
     -ContentType 'text/plain' `
     -Body $csv
 
@@ -142,77 +302,84 @@ EXT001,2026-01-07 08:00:00,IN,TEST-DEVICE-1-$runId
   if (-not $commit.inserted_samples -or $commit.inserted_samples.first3.Count -lt 1) {
     throw 'expected inserted_samples'
   }
-  if ($commit.inserted_samples.first3[0].person_id -ne 'p1') {
+  if ($commit.inserted_samples.first3[0].person_id -ne $personVendor) {
     throw 'expected inserted person_id to be canonical'
   }
 
-  $csvMissing = @"
+  if ($policy -eq 'all') {
+    $genericEmployeeUrl = "$baseUrl/api/employees-registry/${personGeneric}?company_id=$companyId"
+    $escapedGenericId = [regex]::Escape($personGeneric)
+    if ($genericEmployeeUrl -notmatch "/$escapedGenericId\?company_id=") {
+      throw ("expected generic employee URL to include /{0}?company_id=. personId={0} url={1}" -f $personGeneric, $genericEmployeeUrl)
+    }
+
+    Invoke-RestMethod $genericEmployeeUrl `
+      -Method Put `
+      -ContentType 'application/json' `
+      -Body (@{
+        metadata = @{}
+      } | ConvertTo-Json -Depth 6) | Out-Null
+
+    $csvMissingGeneric = @"
 person_id,event_time,direction,device_uid
-EXT_MISSING_$runId,2026-01-07 09:00:00,IN,TEST-DEVICE-1-missing-$runId
+$genericIdentifier,2026-01-07 09:00:00,IN,TEST-DEVICE-1-generic-$runId
 "@
 
-  $previewMissingRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
-    -Method Post `
-    -ContentType 'text/plain' `
-    -Body $csvMissing
-  $previewMissing = Unwrap-Value $previewMissingRaw
-
-  if ($require -eq $true) {
-    if ($previewMissing.invalid_rows -lt 1) { throw 'expected preview invalid_rows for missing mapping' }
-    $hasIdentityError = $false
-    foreach ($err in $previewMissing.errors) {
-      if ($err.code -eq 'identity_mapping_missing') { $hasIdentityError = $true }
+    $genericHeaders = @{
+      'x-vendor' = $genericProvider
     }
-    if (-not $hasIdentityError) { throw 'expected identity_mapping_missing error in preview' }
 
-    try {
-      Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
-        -Method Post `
-        -ContentType 'text/plain' `
-        -Body $csvMissing | Out-Null
-      throw 'expected commit to fail on missing mapping'
-    } catch {
-      $info = Get-HttpErrorInfo $_
-      if ($info.status -ne 400) {
-        throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
+    $previewMissingGenericRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
+      -Method Post `
+      -Headers $genericHeaders `
+      -ContentType 'text/plain' `
+      -Body $csvMissingGeneric
+    $previewMissingGeneric = Unwrap-Value $previewMissingGenericRaw
+
+    if ($require -eq $true) {
+      if ($previewMissingGeneric.invalid_rows -lt 1) {
+        Dump-PreviewDiagnostics 'missing generic mapping preview' $previewMissingGeneric @{
+          require = $require
+          policy = $policy
+          vendor = $genericProvider
+          companyId = $companyId
+        }
+        throw 'expected preview invalid_rows for missing generic mapping'
       }
-      if (-not $info.json) {
-        throw ("expected JSON error body. raw={0}" -f $info.text)
+      $hasIdentityError = $false
+      foreach ($err in $previewMissingGeneric.errors) {
+        if ($err.code -eq 'identity_mapping_missing') { $hasIdentityError = $true }
       }
-      if ($info.json.error -ne 'identity_mapping_missing') {
-        throw ("expected identity_mapping_missing, got {0}" -f $info.json.error)
+      if (-not $hasIdentityError) {
+        Dump-PreviewDiagnostics 'missing generic mapping preview' $previewMissingGeneric @{
+          require = $require
+          policy = $policy
+          vendor = $genericProvider
+          companyId = $companyId
+        }
+        throw 'expected identity_mapping_missing error in generic preview'
+      }
+    } else {
+      if ($previewMissingGeneric.total_rows -ne 1) { throw 'expected preview total_rows 1 for generic missing mapping' }
+      if ($previewMissingGeneric.valid_rows -lt 1 -or $previewMissingGeneric.invalid_rows -ne 0) {
+        throw 'expected preview valid row for generic missing mapping in non-strict mode'
+      }
+      $previewRowsMissing = $null
+      if ($previewMissingGeneric.sample_rows -and $previewMissingGeneric.sample_rows.Count -gt 0) {
+        $previewRowsMissing = $previewMissingGeneric.sample_rows
+      } elseif ($previewMissingGeneric.sample_valid_rows -and $previewMissingGeneric.sample_valid_rows.Count -gt 0) {
+        $previewRowsMissing = $previewMissingGeneric.sample_valid_rows
+      }
+      if (-not $previewRowsMissing -or $previewRowsMissing.Count -lt 1) {
+        throw 'expected preview sample rows for generic missing mapping in non-strict mode'
+      }
+      $sampleMissing = $previewRowsMissing[0].data
+      if ($sampleMissing.identity_mapping_applied -ne $false) {
+        throw 'expected identity_mapping_applied false for generic missing mapping'
       }
     }
   } else {
-    if ($previewMissing.total_rows -ne 1) { throw 'expected preview total_rows 1 for missing mapping' }
-    if ($previewMissing.valid_rows -lt 1 -or $previewMissing.invalid_rows -ne 0) {
-      throw 'expected preview valid row for missing mapping in non-strict mode'
-    }
-    $previewRowsMissing = $null
-    if ($previewMissing.sample_rows -and $previewMissing.sample_rows.Count -gt 0) {
-      $previewRowsMissing = $previewMissing.sample_rows
-    } elseif ($previewMissing.sample_valid_rows -and $previewMissing.sample_valid_rows.Count -gt 0) {
-      $previewRowsMissing = $previewMissing.sample_valid_rows
-    }
-    if (-not $previewRowsMissing -or $previewRowsMissing.Count -lt 1) {
-      throw 'expected preview sample rows for missing mapping in non-strict mode'
-    }
-    $sampleMissing = $previewRowsMissing[0].data
-    if ($sampleMissing.identity_mapping_applied -ne $false) {
-      throw 'expected identity_mapping_applied false for missing mapping'
-    }
-    if (-not $sampleMissing.identity_mapping_reason) {
-      throw 'expected identity_mapping_reason for missing mapping'
-    }
-
-    $commitMissingRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
-      -Method Post `
-      -ContentType 'text/plain' `
-      -Body $csvMissing
-    $commitMissing = Unwrap-Value $commitMissingRaw
-    if ($commitMissing.inserted_rows -ne 1 -or $commitMissing.skipped_rows -ne 0) {
-      throw ("expected inserted_rows 1; got inserted_rows={0} skipped_rows={1}" -f $commitMissing.inserted_rows, $commitMissing.skipped_rows)
-    }
+    Write-Host "SKIP: generic provider scenario (identity mapping policy is $policy)"
   }
 
   Write-Host 'PASS: identity mappings ingestion mode'

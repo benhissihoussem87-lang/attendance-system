@@ -37,21 +37,21 @@ try {
   )
 
   # Reset state around the target date for each person.
-  foreach ($pid in @('1001', '1002')) {
+  foreach ($personId in @('1001', '1002')) {
     Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
       -Method Post `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        person_id = $pid
+        person_id = $personId
         date = $date
         events = @()
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
   # Seed employees registry once.
-  foreach ($pid in @('1001', '1002')) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$pid?company_id=$companyId" `
+  foreach ($personId in @('1001', '1002')) {
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -65,15 +65,15 @@ try {
     $csv = Get-Content -Raw $csvPath
 
     # Seed identity mappings per vendor provider.
-    foreach ($pid in @('1001', '1002')) {
+    foreach ($personId in @('1001', '1002')) {
       Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
         -Method Put `
         -ContentType 'application/json' `
         -Body (@{
           provider = $vendorId
           identifier_type = 'pin'
-          identifier_value = $pid
-          person_id = $pid
+          identifier_value = $personId
+          person_id = $personId
           active = $true
           metadata = @{}
         } | ConvertTo-Json -Depth 6) | Out-Null
@@ -107,8 +107,8 @@ try {
     }
   }
 
-  foreach ($pid in @('1001', '1002')) {
-    $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$pid&company_id=$companyId"
+  foreach ($personId in @('1001', '1002')) {
+    $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=$companyId"
     $source = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value } else { $res }
     $arr = @($source)
     if ($arr.Count -lt 1) {
@@ -116,10 +116,10 @@ try {
     }
     $record = $arr[0]
     if ($record.status -ne 'PRESENT') {
-      Fail-WithResponse ("vendor_csv_vendors attendance_status " + $pid) $res
+      Fail-WithResponse ("vendor_csv_vendors attendance_status " + $personId) $res
     }
     if (-not $record.first_in -or -not $record.last_out) {
-      Fail-WithResponse ("vendor_csv_vendors attendance_times " + $pid) $res
+      Fail-WithResponse ("vendor_csv_vendors attendance_times " + $personId) $res
     }
   }
 
@@ -130,4 +130,3 @@ try {
   Write-Host $_
   exit 1
 }
-

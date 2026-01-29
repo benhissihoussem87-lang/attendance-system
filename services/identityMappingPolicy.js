@@ -1,3 +1,5 @@
+const { toBool } = require('./envBool');
+
 function getIdentityMappingPolicy() {
   const rawValue = process.env.IDENTITY_MAPPING_POLICY;
   if (typeof rawValue !== 'string') {
@@ -14,7 +16,7 @@ function getIdentityMappingPolicy() {
 }
 
 function shouldRequireIdentityMappingForProvider(provider) {
-  if (process.env.REQUIRE_IDENTITY_MAPPINGS !== '1') {
+  if (!toBool(process.env.REQUIRE_IDENTITY_MAPPINGS)) {
     return false;
   }
 

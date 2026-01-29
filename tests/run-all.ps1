@@ -42,6 +42,18 @@ try {
   exit 1
 }
 
+function Run-NodeTest {
+  param(
+    [string]$relativePath
+  )
+  $fullPath = Join-Path $PSScriptRoot $relativePath
+  node $fullPath
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "FAIL: $relativePath"
+    exit 1
+  }
+}
+
 $scriptList = @(
   'ops\health.ps1',
   'ops\ready.ps1',
@@ -50,6 +62,28 @@ $scriptList = @(
   'hr\employees_registry_display_mode.ps1',
   'hr\identity_mappings.ps1',
   'hr\identity_mappings_ingestion_mode.ps1',
+  'identity_mappings\identity_mappings_normalization.ps1'
+)
+
+$policy = if ($mode.identity_mapping_policy) { $mode.identity_mapping_policy } else { 'all' }
+$policy = $policy.ToString().Trim().ToLower()
+
+if ($policy -eq 'all') {
+  $scriptList += 'device_events\identity_mapping_policy_all.ps1'
+} else {
+  Write-Host "SKIP: identity mapping policy all (server policy is $policy)"
+}
+
+if ($policy -eq 'vendor') {
+  $scriptList += 'device_events\identity_mapping_policy_vendor.ps1'
+} else {
+  Write-Host "SKIP: identity mapping policy vendor (server policy is $policy)"
+}
+
+$scriptList += @(
+  'device_events\json_ingest_dedup_idempotent.ps1',
+  'device_events\json_ingest_identity_normalization.ps1',
+  'device_events\json_ingest_provider_precedence.ps1',
   'csv\csv_valid.ps1',
   'csv\csv_generic_punchlog.ps1',
   'csv\csv_invalid.ps1',
@@ -75,6 +109,10 @@ if ($mode.use_employee_assignments) {
 } else {
   Write-Host 'SKIP: employee assignments effective (USE_EMPLOYEE_ASSIGNMENTS not enabled)'
 }
+
+Run-NodeTest 'services\identityMappingPolicy.test.js'
+Run-NodeTest 'device_events\identity_context_fallback_keys.test.js'
+Run-NodeTest 'adapters\simplePinCsvAdapter_dates.test.js'
 
 foreach ($script in $scriptList) {
   $path = Join-Path $PSScriptRoot $script

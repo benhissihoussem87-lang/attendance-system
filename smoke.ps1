@@ -25,6 +25,8 @@ $script:ServerStdoutLogPath = $null
 $script:ServerStderrLogPath = $null
 $script:ServerPortPrev = $null
 $script:HadServerPort = $false
+$script:ChecktypeMapPrev = $null
+$script:HadChecktypeMap = $false
 $script:BaseUrlPrev = $null
 $script:HadBaseUrl = $false
 $script:FailedStep = $null
@@ -246,6 +248,9 @@ SELECT
       $script:ServerPortPrev = $env:PORT
       $script:HadServerPort = $null -ne $env:PORT
       $env:PORT = $ServerPort
+      $script:ChecktypeMapPrev = $env:ZKTECO_CHECKTYPE_MAP
+      $script:HadChecktypeMap = $null -ne $env:ZKTECO_CHECKTYPE_MAP
+      $env:ZKTECO_CHECKTYPE_MAP = '{"I":"IN","O":"OUT","0":"IN","1":"OUT"}'
 
       try {
         $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
@@ -300,6 +305,11 @@ SELECT
     Remove-Item Env:USE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
     Remove-Item Env:REQUIRE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
     Remove-Item Env:USE_EMPLOYEE_ASSIGNMENTS -ErrorAction SilentlyContinue
+  }
+  if ($script:HadChecktypeMap) {
+    $env:ZKTECO_CHECKTYPE_MAP = $script:ChecktypeMapPrev
+  } else {
+    Remove-Item Env:ZKTECO_CHECKTYPE_MAP -ErrorAction SilentlyContinue
   }
   if ($script:HadBaseUrl) {
     $env:BASE_URL = $script:BaseUrlPrev

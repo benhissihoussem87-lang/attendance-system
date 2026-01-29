@@ -3,7 +3,15 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
 $runId = [Guid]::NewGuid().ToString('N')
-$personId = "norm_test_$runId"
+
+$providerUpper = 'NORMTEST'
+$providerLower = 'normtest'
+$typeUpper = 'PIN'
+$typeLower = 'pin'
+$identifierValueSpaced = " AbC123-$runId "
+$identifierValueTrimmed = "AbC123-$runId"
+$personA = "norm_test_A_$runId"
+$personB = "norm_test_B_$runId"
 
 function Get-HttpErrorInfo {
   param($err)
@@ -53,6 +61,47 @@ function Get-HttpErrorInfo {
   }
 }
 
+function Invoke-JsonRequest {
+  param(
+    [string]$method,
+    [string]$url,
+    $body = $null
+  )
+
+  try {
+    if ($body -ne $null) {
+      $resp = Invoke-WebRequest $url `
+        -Method $method `
+        -ContentType 'application/json' `
+        -Body ($body | ConvertTo-Json -Depth 6) `
+        -UseBasicParsing
+    } else {
+      $resp = Invoke-WebRequest $url `
+        -Method $method `
+        -UseBasicParsing
+    }
+
+    $text = $resp.Content
+    $json = $null
+    if ($text) {
+      try { $json = $text | ConvertFrom-Json -ErrorAction Stop } catch { $json = $null }
+    }
+
+    return @{
+      status = [int]$resp.StatusCode
+      text   = $text
+      json   = $json
+    }
+  } catch {
+    $info = Get-HttpErrorInfo $_
+    return @{
+      status = $info.status
+      text   = $info.text
+      json   = $info.json
+    }
+  }
+}
+
 try {
   $mode = $null
   try {
@@ -66,58 +115,100 @@ try {
     exit 1
   }
 
-  try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$personId" `
-      -Method Put `
-      -ContentType 'application/json' `
-      -Body (@{
-        company_id = $companyId
-        employee_code = "EMP_NORM_$runId"
-        full_name = 'Norm Test'
-        active = $true
-      } | ConvertTo-Json -Depth 6) | Out-Null
-  } catch {
-    $info = Get-HttpErrorInfo $_
-    throw ("employee registry upsert failed. status={0} body={1}" -f $info.status, $info.text)
+  $respA = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$personA" @{
+    company_id = $companyId
+    employee_code = "EMP_NORM_A_$runId"
+    full_name = 'Norm Test A'
+    active = $true
+  }
+  if ($respA.status -ne 200 -and $respA.status -ne 201) {
+    Write-Host "FAIL: employee registry upsert A status=$($respA.status)"
+    Write-Host $respA.text
+    exit 1
   }
 
-  try {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings" `
-      -Method Put `
-      -ContentType 'application/json' `
-      -Body (@{
-        company_id = $companyId
-        provider = 'ZKTECO'
-        identifier_type = 'PIN'
-        identifier_value = ' AbC123 '
-        person_id = $personId
-        active = $true
-      } | ConvertTo-Json -Depth 6) | Out-Null
-  } catch {
-    $info = Get-HttpErrorInfo $_
-    throw ("identity mapping upsert failed. status={0} body={1}" -f $info.status, $info.text)
+  $respB = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$personB" @{
+    company_id = $companyId
+    employee_code = "EMP_NORM_B_$runId"
+    full_name = 'Norm Test B'
+    active = $true
+  }
+  if ($respB.status -ne 200 -and $respB.status -ne 201) {
+    Write-Host "FAIL: employee registry upsert B status=$($respB.status)"
+    Write-Host $respB.text
+    exit 1
   }
 
-  $queryLower = "$baseUrl/api/identity-mappings?company_id=$companyId&provider=zkteco&identifier_type=pin&identifier_value=AbC123"
-  $listLower = Invoke-RestMethod $queryLower -Method Get
-  $itemsLower = @($listLower)
-  if ($itemsLower.Count -ne 1) {
-    throw ("expected 1 row for lowercase query, got {0}" -f $itemsLower.Count)
+  $resp1 = Invoke-JsonRequest 'Put' "$baseUrl/api/identity-mappings" @{
+    company_id = $companyId
+    provider = $providerUpper
+    identifier_type = $typeUpper
+    identifier_value = $identifierValueSpaced
+    person_id = $personA
+    active = $true
   }
-  $rowLower = $itemsLower[0]
-  if ($rowLower.provider -ne 'zkteco' -or $rowLower.identifier_type -ne 'pin' -or $rowLower.identifier_value -ne 'AbC123') {
-    throw ("unexpected row for lowercase query: {0}" -f ($rowLower | ConvertTo-Json -Depth 6))
+  if ($resp1.status -ne 200 -and $resp1.status -ne 201) {
+    Write-Host "FAIL: mapping upsert #1 status=$($resp1.status)"
+    Write-Host $resp1.text
+    exit 1
+  }
+  if ($resp1.json -and $resp1.json.PSObject.Properties.Name -contains 'mapping_applied' -and -not $resp1.json.mapping_applied) {
+    Write-Host "FAIL: mapping upsert #1 mapping_applied=false"
+    Write-Host $resp1.text
+    exit 1
   }
 
-  $queryMixed = "$baseUrl/api/identity-mappings?company_id=$companyId&provider=ZKTECO&identifier_type=PIN&identifier_value= AbC123"
-  $listMixed = Invoke-RestMethod $queryMixed -Method Get
-  $itemsMixed = @($listMixed)
-  if ($itemsMixed.Count -ne 1) {
-    throw ("expected 1 row for mixed query, got {0}" -f $itemsMixed.Count)
+  $resp2 = Invoke-JsonRequest 'Put' "$baseUrl/api/identity-mappings" @{
+    company_id = $companyId
+    provider = $providerLower
+    identifier_type = $typeLower
+    identifier_value = $identifierValueTrimmed
+    person_id = $personA
+    active = $true
   }
-  $rowMixed = $itemsMixed[0]
-  if ($rowMixed.provider -ne 'zkteco' -or $rowMixed.identifier_type -ne 'pin' -or $rowMixed.identifier_value -ne 'AbC123') {
-    throw ("unexpected row for mixed query: {0}" -f ($rowMixed | ConvertTo-Json -Depth 6))
+  if ($resp2.status -ne 200) {
+    Write-Host "FAIL: mapping upsert #2 status=$($resp2.status)"
+    Write-Host $resp2.text
+    exit 1
+  }
+
+  $query = "$baseUrl/api/identity-mappings?company_id=$companyId&provider=$providerLower&identifier_type=$typeLower&identifier_value=$identifierValueTrimmed"
+  $list = Invoke-JsonRequest 'Get' $query $null
+  if ($list.status -ne 200) {
+    Write-Host "FAIL: mapping lookup status=$($list.status)"
+    Write-Host $list.text
+    exit 1
+  }
+  $items = @($list.json)
+  if ($items.Count -ne 1) {
+    Write-Host "FAIL: expected 1 row for normalized lookup, got $($items.Count)"
+    Write-Host $list.text
+    exit 1
+  }
+  $row = $items[0]
+  if ($row.provider -ne $providerLower -or $row.identifier_type -ne $typeLower -or $row.identifier_value -ne $identifierValueTrimmed -or $row.person_id -ne $personA) {
+    Write-Host "FAIL: unexpected row for normalized lookup"
+    Write-Host ($row | ConvertTo-Json -Depth 6)
+    exit 1
+  }
+
+  $resp3 = Invoke-JsonRequest 'Put' "$baseUrl/api/identity-mappings" @{
+    company_id = $companyId
+    provider = $providerUpper
+    identifier_type = $typeUpper
+    identifier_value = $identifierValueTrimmed
+    person_id = $personB
+    active = $true
+  }
+  if ($resp3.status -ne 409) {
+    Write-Host "FAIL: mapping upsert #3 expected 409 got $($resp3.status)"
+    Write-Host $resp3.text
+    exit 1
+  }
+  if (-not $resp3.json -or -not $resp3.json.existing_person_id -or $resp3.json.existing_person_id -ne $personA) {
+    Write-Host "FAIL: mapping upsert #3 missing existing_person_id=$personA"
+    Write-Host $resp3.text
+    exit 1
   }
 
   Write-Host 'PASS: identity_mappings_normalization'

@@ -79,14 +79,14 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/:person_id', async (req, res) => {
+router.get('/:personId', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
       return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
     }
     const companyId = resolved.value;
-    const personId = req.params.person_id;
+    const personId = req.params.personId;
 
     const employee = await getEmployee(db, companyId, personId);
     if (!employee) {
@@ -100,7 +100,7 @@ router.get('/:person_id', async (req, res) => {
   }
 });
 
-router.put('/:person_id', async (req, res) => {
+router.put('/:personId', async (req, res) => {
   try {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
@@ -108,7 +108,7 @@ router.put('/:person_id', async (req, res) => {
       return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
     }
     const companyId = resolved.value;
-    const personId = req.params.person_id;
+    const personId = req.params.personId;
 
     if (Object.prototype.hasOwnProperty.call(body, 'metadata') && !isPlainObject(body.metadata)) {
       return res.status(400).json({ error: 'invalid_request', detail: 'metadata must be an object' });

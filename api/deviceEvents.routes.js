@@ -17,6 +17,7 @@ const {
 } = require('../services/timeInterpreter');
 const { resolvePersonIdForIdentifier } = require('../services/identityResolver');
 const { shouldRequireIdentityMappingForProvider } = require('../services/identityMappingPolicy');
+const { toBool } = require('../services/envBool');
 const {
   SYSTEM_VERSION,
   CSV_IMPORT_VERSION,
@@ -146,7 +147,7 @@ router.post('/', async (req, res) => {
     const companyId = resolveCompanyId(req, req.body || {});
     let resolvedPersonId = person_id;
 
-    const useIdentityMappings = process.env.USE_IDENTITY_MAPPINGS === '1';
+    const useIdentityMappings = toBool(process.env.USE_IDENTITY_MAPPINGS);
     const providerRaw = (typeof provider === 'string' && provider.trim())
       ? provider
       : (typeof vendor === 'string' && vendor.trim())

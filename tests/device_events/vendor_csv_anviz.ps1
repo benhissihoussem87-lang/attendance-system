@@ -32,20 +32,20 @@ try {
     exit 1
   }
 
-  foreach ($pid in @('1001', '1002')) {
+  foreach ($personId in @('1001', '1002')) {
     Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
       -Method Post `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        person_id = $pid
+        person_id = $personId
         date = $date
         events = @()
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
-  foreach ($pid in @('1001', '1002')) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$pid?company_id=$companyId" `
+  foreach ($personId in @('1001', '1002')) {
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -53,15 +53,15 @@ try {
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
-  foreach ($pid in @('1001', '1002')) {
+  foreach ($personId in @('1001', '1002')) {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         provider = $vendor
         identifier_type = 'pin'
-        identifier_value = $pid
-        person_id = $pid
+        identifier_value = $personId
+        person_id = $personId
         active = $true
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -94,8 +94,8 @@ try {
     Fail-WithResponse 'vendor_csv_anviz commit' $commit
   }
 
-  foreach ($pid in @('1001', '1002')) {
-    $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$pid&company_id=$companyId"
+  foreach ($personId in @('1001', '1002')) {
+    $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=$companyId"
     $source = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value } else { $res }
     $arr = @($source)
     if ($arr.Count -lt 1) {
@@ -103,10 +103,10 @@ try {
     }
     $record = $arr[0]
     if ($record.status -ne 'PRESENT') {
-      Fail-WithResponse ("vendor_csv_anviz attendance_status " + $pid) $res
+      Fail-WithResponse ("vendor_csv_anviz attendance_status " + $personId) $res
     }
     if (-not $record.first_in -or -not $record.last_out) {
-      Fail-WithResponse ("vendor_csv_anviz attendance_times " + $pid) $res
+      Fail-WithResponse ("vendor_csv_anviz attendance_times " + $personId) $res
     }
   }
 

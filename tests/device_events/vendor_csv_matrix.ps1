@@ -39,21 +39,21 @@ try {
   $env:ZKTECO_CHECKTYPE_MAP = '{"I":"IN","O":"OUT","0":"IN","1":"OUT"}'
 
   # Idempotent reset around the sample date for each person.
-  foreach ($pid in @('1001', '1002')) {
+  foreach ($personId in @('1001', '1002')) {
     Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
       -Method Post `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        person_id = $pid
+        person_id = $personId
         date = $date
         events = @()
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
   # Seed employees registry idempotently.
-  foreach ($pid in @('1001', '1002')) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$pid?company_id=$companyId" `
+  foreach ($personId in @('1001', '1002')) {
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -62,15 +62,15 @@ try {
   }
 
   # Seed identity mappings idempotently.
-  foreach ($pid in @('1001', '1002')) {
+  foreach ($personId in @('1001', '1002')) {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         provider = $vendor
         identifier_type = 'pin'
-        identifier_value = $pid
-        person_id = $pid
+        identifier_value = $personId
+        person_id = $personId
         active = $true
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -126,4 +126,3 @@ try {
     Remove-Item Env:ZKTECO_CHECKTYPE_MAP -ErrorAction SilentlyContinue
   }
 }
-

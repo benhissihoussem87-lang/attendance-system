@@ -647,6 +647,132 @@ Implemented
 
 ---
 
+## Decision 022 - Real-Time Device Event Ingestion (Live Push)
+
+**Decision**
+Introduce a live push ingestion path for device events (SDK/HTTP push). Live events MUST flow through the same normalization and idempotency guarantees as batch imports, including identity mappings, normalization, and provider > vendor precedence. Simulation remains no-persist.
+
+**Rationale**
+- Eliminates lag from batch imports while preserving deterministic contracts.
+- Enables near real-time operational visibility without changing engine semantics.
+
+**Status**
+Planned
+
+---
+
+## Decision 023 - REST API Layer for External Integration
+
+**Decision**
+Provide a stable REST API for external systems to ingest and query attendance data. All endpoints MUST enforce tenant scoping, identity mapping policy, and fact vs policy separation; no endpoint may bypass normalization or migrations.
+
+**Rationale**
+- Enables integration with HR/payroll/ERP and mobile clients safely.
+- Preserves invariants while expanding integration surface area.
+
+**Status**
+Planned
+
+---
+
+## Decision 024 - Attendance Reports Module
+
+**Decision**
+Introduce a reporting module that derives daily/monthly summaries from computed facts and effective outcomes. Reports MUST be read-only, deterministic, and derived from migration-backed tables; no report may mutate facts or policy state.
+
+**Rationale**
+- Converts raw facts into enterprise reporting outputs.
+- Keeps audits clean by separating reporting from core computation.
+
+**Status**
+Planned
+
+---
+
+## Decision 025 - Shift Template and Work Schedule Management
+
+**Decision**
+Add shift templates and schedule assignments as policy-layer inputs. Schedule data MUST be stored via migrations and MUST NOT alter computed facts; it influences effective outcomes and reporting only.
+
+**Rationale**
+- Required for accurate late/absence/overtime interpretation at scale.
+- Keeps policy decisions separate from deterministic fact computation.
+
+**Status**
+Planned
+
+---
+
+## Decision 026 - Biometric/RFID Device Adapter Layer
+
+**Decision**
+Create an adapter layer for biometric/RFID devices that normalizes vendor protocols into the ingestion contract. Adapters MUST preserve raw payloads, enforce identity mapping policy, and respect provider > vendor precedence.
+
+**Rationale**
+- Decouples vendor-specific protocols from core ingestion.
+- Supports multiple device types without changing engine logic.
+
+**Status**
+Planned
+
+---
+
+## Decision 027 - Unified Reporting API + CSV Export
+
+**Decision**
+Expose unified reporting endpoints and CSV exports backed by the reporting module. Outputs MUST include computed vs effective layers and remain read-only with deterministic, migration-backed data sources.
+
+**Rationale**
+- Provides consistent export formats across integrations.
+- Avoids direct SQL usage and preserves auditability.
+
+**Status**
+Planned
+
+---
+
+## Decision 028 - Test Coverage Enforcement in CI
+
+**Decision**
+All regression-critical tests (PowerShell + Node) MUST run via tests/run-all.ps1 and therefore in CI smoke. No orphan tests are allowed outside the suite.
+
+**Rationale**
+- Prevents drift in identity/ingestion contracts.
+- Ensures deterministic coverage across Windows and GitHub Actions.
+
+**Status**
+In Progress
+
+---
+
+## Decision 029 - Progressive Engine Expansion for Sessions and Gaps
+
+**Decision**
+Extend the attendance engine to support multiple sessions, gaps, and richer pairing rules while preserving existing semantics behind feature gates. Computed facts remain deterministic; simulation stays no-persist.
+
+**Rationale**
+- Handles complex real-world punch patterns without weakening core rules.
+- Enables future overtime and compliance logic safely.
+
+**Status**
+Planned
+
+---
+
+## Decision 030 - Manual Device-Free Attendance via Mobile App (Optional)
+
+**Decision**
+Allow optional device-free check-in/out via mobile (GPS + selfie) as policy-layer inputs. These events MUST be auditable, must not mutate computed facts, and must follow identity mapping and normalization rules.
+
+**Rationale**
+- Supports field and remote work while preserving auditability.
+- Keeps device evidence and HR policy cleanly separated.
+
+**Status**
+Planned
+
+---
+
 ## OPEN ITEMS (NEXT STEPS) ? NOT IMPLEMENTED YET
 
 - Employee master data table (canonical employee/person registry) to unify identity, HR attributes, and reporting across devices. Evidence gap: no migration or schema for a canonical employee table.
@@ -654,3 +780,6 @@ Implemented
 - Tenant scoping Phase B for remaining tenant-bound tables (e.g., rule_sets, rules). Evidence gap: migrations/20260113_rulesets.sql shows no company_id columns on rule_sets or rules.
 - Authentication/authorization tenancy enforcement to prevent cross-company access. Evidence gap: no auth layer or tenancy guard middleware in the API.
 - Admin UI/API for managing companies, policies, rule sets, working days, and holidays. Evidence gap: no dedicated admin endpoints or UI flows.
+
+
+

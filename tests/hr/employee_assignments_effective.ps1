@@ -51,7 +51,7 @@ try {
   $ruleB = $seedB.rule_set_id
   if (-not $ruleB) { throw 'seed-ruleset did not return rule_set_id for rule B' }
 
-  Invoke-RestMethod "$baseUrl/api/employees-registry/$personId?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -59,7 +59,7 @@ try {
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/$personId?company_id=DEFAULT"
+  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=DEFAULT"
   if ($employee.default_rule_set_id -ne $ruleA) {
     throw 'expected employee default_rule_set_id to match rule A'
   }

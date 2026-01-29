@@ -1,6 +1,9 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$runId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+$personId = "employee_registry_$runId"
+$externalId = "EXT_$runId"
 
 function Get-HttpErrorInfo {
   param($err)
@@ -68,6 +71,37 @@ try {
   if ($getOne.employee_code -ne 'EMP001') { throw 'expected employee_code EMP001' }
   if ($getOne.full_name -ne 'Ali Ben Salah') { throw 'expected full_name Ali Ben Salah' }
   if ($getOne.metadata.dept -ne 'IT') { throw 'expected metadata.dept IT' }
+
+  $personUrl = "$baseUrl/api/employees-registry/${personId}?company_id=DEFAULT"
+  $escapedPersonId = [regex]::Escape($personId)
+  if ($personUrl -notmatch "/$escapedPersonId\?company_id=") {
+    throw ("expected person URL to include /{0}?company_id=. personId={0} personUrl={1}" -f $personId, $personUrl)
+  }
+
+  $putRun = Invoke-RestMethod $personUrl `
+    -Method Put `
+    -ContentType 'application/json' `
+    -Body (@{
+      full_name = 'Registry Run Test'
+      metadata = @{}
+    } | ConvertTo-Json -Depth 6)
+  if ($putRun.person_id -ne $personId) { throw 'expected PUT response person_id to match path param' }
+
+  $getRun = Invoke-RestMethod $personUrl
+  if ($getRun.person_id -ne $personId) { throw 'expected GET person_id to match path param' }
+
+  $identityUpsert = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+    -Method Put `
+    -ContentType 'application/json' `
+    -Body (@{
+      provider = 'generic'
+      identifier_type = 'person_id'
+      identifier_value = $externalId
+      person_id = $personId
+      active = $true
+      metadata = @{}
+    } | ConvertTo-Json -Depth 6)
+  if ($identityUpsert.person_id -ne $personId) { throw 'expected identity mapping upsert to succeed for person_id' }
 
   $putTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
     -Method Put `

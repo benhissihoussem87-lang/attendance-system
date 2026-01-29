@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
-const { getIdentityMappingPolicy } = require('../services/identityMappingPolicy');
+const { toBool } = require('../services/envBool');
 
 async function getColumnSet(tableName) {
   const res = await db.query(
@@ -431,19 +431,13 @@ router.get('/mode', (req, res) => {
     return res.status(404).json({ error: 'Not found' });
   }
 
-  const toBool = value => {
-    if (typeof value !== 'string') {
-      return false;
-    }
-    const normalized = value.trim().toLowerCase();
-    return normalized === '1' || normalized === 'true';
-  };
+  const policy = (process.env.IDENTITY_MAPPING_POLICY || 'all').trim().toLowerCase();
 
   return res.json({
     allow_test_endpoints: toBool(process.env.ALLOW_TEST_ENDPOINTS),
     use_identity_mappings: toBool(process.env.USE_IDENTITY_MAPPINGS),
     require_identity_mappings: toBool(process.env.REQUIRE_IDENTITY_MAPPINGS),
-    identity_mapping_policy: getIdentityMappingPolicy(),
+    identity_mapping_policy: policy,
     use_employees_registry: toBool(process.env.USE_EMPLOYEES_REGISTRY),
     use_employee_assignments: toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS)
   });

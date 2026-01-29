@@ -68,6 +68,12 @@ function testRequireMappingsVendorProvider() {
   withEnv({ REQUIRE_IDENTITY_MAPPINGS: '1', IDENTITY_MAPPING_POLICY: 'vendor' }, () => {
     assert.strictEqual(shouldRequireIdentityMappingForProvider('zkteco'), true);
   });
+  withEnv({ REQUIRE_IDENTITY_MAPPINGS: 'true', IDENTITY_MAPPING_POLICY: 'vendor' }, () => {
+    assert.strictEqual(shouldRequireIdentityMappingForProvider('zkteco'), true);
+  });
+  withEnv({ REQUIRE_IDENTITY_MAPPINGS: '0', IDENTITY_MAPPING_POLICY: 'vendor' }, () => {
+    assert.strictEqual(shouldRequireIdentityMappingForProvider('zkteco'), false);
+  });
   withEnv({ REQUIRE_IDENTITY_MAPPINGS: '1', IDENTITY_MAPPING_POLICY: 'all' }, () => {
     assert.strictEqual(shouldRequireIdentityMappingForProvider('zkteco'), true);
   });

@@ -93,6 +93,49 @@ function isLegacyDateTime(value) {
   return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value);
 }
 
+function parseSlashDateTimeToUtc(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const partA = Number.parseInt(match[1], 10);
+  const partB = Number.parseInt(match[2], 10);
+  const year = Number.parseInt(match[3], 10);
+  const hour = Number.parseInt(match[4], 10);
+  const minute = Number.parseInt(match[5], 10);
+  const second = Number.parseInt(match[6], 10);
+
+  if (!Number.isInteger(partA) || !Number.isInteger(partB) || !Number.isInteger(year)
+    || !Number.isInteger(hour) || !Number.isInteger(minute) || !Number.isInteger(second)) {
+    return null;
+  }
+
+  let day;
+  let month;
+  if (partA > 12) {
+    day = partA;
+    month = partB;
+  } else if (partB > 12) {
+    day = partB;
+    month = partA;
+  } else {
+    // Ambiguous: default to DD/MM when both components are <= 12.
+    day = partA;
+    month = partB;
+  }
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
+    return null;
+  }
+
+  const parsed = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function parseUtcDate(value) {
   if (isLegacyDateTime(value)) {
     const normalized = value.replace(' ', 'T') + 'Z';
@@ -102,11 +145,16 @@ function parseUtcDate(value) {
 
   if (isIsoDateTime(value)) {
     let normalized = value;
-    if (!/[Z+-]\d{2}:\d{2}$/.test(value)) {
+    if (!/(Z|[+-]\d{2}:\d{2})$/.test(value)) {
       normalized = value + 'Z';
     }
     const parsed = new Date(normalized);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const slashParsed = parseSlashDateTimeToUtc(value);
+  if (slashParsed) {
+    return slashParsed;
   }
 
   return null;
@@ -313,5 +361,7 @@ function createSimplePinCsvAdapter(config) {
   };
 }
 
-module.exports = { createSimplePinCsvAdapter };
-
+module.exports = {
+  createSimplePinCsvAdapter,
+  __test_parseUtcDate: parseUtcDate
+};
