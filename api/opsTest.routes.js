@@ -25,7 +25,7 @@ function isValidDateString(value) {
 }
 
 router.post('/reset', async (req, res) => {
-  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+  if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
 
@@ -211,7 +211,7 @@ router.post('/reset', async (req, res) => {
 });
 
 router.post('/seed-leave', async (req, res) => {
-  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+  if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
 
@@ -331,7 +331,7 @@ router.post('/seed-leave', async (req, res) => {
 });
 
 router.post('/seed-nonworking', async (req, res) => {
-  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+  if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
 
@@ -398,7 +398,7 @@ router.post('/seed-nonworking', async (req, res) => {
 });
 
 router.get('/attendance-days/count', async (req, res) => {
-  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+  if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
 
@@ -427,7 +427,7 @@ router.get('/attendance-days/count', async (req, res) => {
 });
 
 router.get('/mode', (req, res) => {
-  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+  if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
 
@@ -444,7 +444,7 @@ router.get('/mode', (req, res) => {
 });
 
 router.post('/seed-ruleset', async (req, res) => {
-  if (process.env.ALLOW_TEST_ENDPOINTS !== 'true') {
+  if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
 

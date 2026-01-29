@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { getEnv } = require('./config/env');
+const { toBool } = require('./services/envBool');
 
 const app = express();
 app.use(cors());
@@ -12,16 +13,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 const env = getEnv();
 
-function isTruthy(value) {
-  if (typeof value !== 'string') {
-    return false;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true';
-}
-
 async function preflightEmployeeAssignments() {
-  if (!isTruthy(process.env.USE_EMPLOYEE_ASSIGNMENTS)) {
+  if (!toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS)) {
     return;
   }
   const res = await require('./db').query(`
@@ -43,7 +36,7 @@ app.use('/api/simulate', require('./api/simulate.routes'));
 app.use('/api/simulation', require('./api/simulation.routes'));
 app.use('/api/device-events', require('./api/deviceEvents.routes'));
 app.use('/api/ops', require('./api/ops.routes'));
-if (process.env.ALLOW_TEST_ENDPOINTS === 'true') {
+if (toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
   app.use('/api/ops/test', require('./api/opsTest.routes'));
 }
 app.use('/api/policy-profiles', require('./api/policyProfiles.routes'));

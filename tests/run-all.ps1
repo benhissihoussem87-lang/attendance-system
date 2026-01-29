@@ -6,7 +6,7 @@ try {
   if (-not $mode.allow_test_endpoints) {
     Write-Host "FAIL: server mode check"
     Write-Host "---- ERROR ----"
-    Write-Host "This test suite requires the server to be started with ALLOW_TEST_ENDPOINTS=true"
+    Write-Host "This test suite requires ALLOW_TEST_ENDPOINTS enabled (true/1)"
     Write-Host "Base URL: $baseUrl"
     exit 1
   }
@@ -37,7 +37,7 @@ try {
 } catch {
   Write-Host "FAIL: server mode check"
   Write-Host "---- ERROR ----"
-  Write-Host "This test suite requires the server to be started with ALLOW_TEST_ENDPOINTS=true"
+  Write-Host "This test suite requires ALLOW_TEST_ENDPOINTS enabled (true/1)"
   Write-Host "Base URL: $baseUrl"
   exit 1
 }
@@ -111,6 +111,7 @@ if ($mode.use_employee_assignments) {
 }
 
 Run-NodeTest 'services\identityMappingPolicy.test.js'
+Run-NodeTest 'api\opsTest.allowTestEndpoints.test.js'
 Run-NodeTest 'device_events\identity_context_fallback_keys.test.js'
 Run-NodeTest 'adapters\simplePinCsvAdapter_dates.test.js'
 
