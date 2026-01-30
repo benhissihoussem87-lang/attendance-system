@@ -17,7 +17,22 @@ paths:
       operationId: getOpsHealth
       responses:
         "200":
-          description: OK
+          description: Health check
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - system_version
+                  - uptime_seconds
+                properties:
+                  status:
+                    type: string
+                  system_version:
+                    type: string
+                  uptime_seconds:
+                    type: integer
   /api/ops/ready:
     get:
       tags: [ops]
