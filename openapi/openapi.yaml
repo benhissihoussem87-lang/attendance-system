@@ -10,6 +10,15 @@ tags:
   - name: device-registry
   - name: identity-mappings
   - name: employees-registry
+  - name: attendance
+  - name: company-profile
+  - name: employee-assignments
+  - name: employees
+  - name: policy-profiles
+  - name: resolutions
+  - name: rule-sets
+  - name: simulation
+  - name: system
 paths:
   /api/ops/health:
     get:
@@ -385,6 +394,348 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/attendance:
+    get:
+      tags: [attendance]
+      operationId: getAttendance
+      responses:
+        "200":
+          description: Attendance records
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/company-profile:
+    get:
+      tags: [company-profile]
+      operationId: getCompanyProfile
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Company profile
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [company-profile]
+      operationId: upsertCompanyProfile
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Upserted
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/device-events:
+    post:
+      tags: [device-events]
+      operationId: createDeviceEvent
+      responses:
+        "201":
+          description: Inserted
+        "200":
+          description: Deduplicated
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/device-events/import/preview/export-errors.csv:
+    post:
+      tags: [device-events]
+      operationId: exportDeviceEventsPreviewErrors
+      responses:
+        "200":
+          description: Exported errors CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/device-events/import/commit:
+    post:
+      tags: [device-events]
+      operationId: commitDeviceEventsImport
+      responses:
+        "200":
+          description: Commit result
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/employee-assignments:
+    get:
+      tags: [employee-assignments]
+      operationId: listEmployeeAssignments
+      responses:
+        "200":
+          description: Employee assignments
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [employee-assignments]
+      operationId: upsertEmployeeAssignment
+      responses:
+        "200":
+          description: Upserted
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/employees:
+    get:
+      tags: [employees]
+      operationId: listEmployees
+      responses:
+        "200":
+          description: Employees
+  /api/ops/test/attendance-days/count:
+    get:
+      tags: [ops]
+      operationId: getOpsTestAttendanceDaysCount
+      responses:
+        "200":
+          description: Attendance days count
+  /api/ops/test/reset:
+    post:
+      tags: [ops]
+      operationId: resetOpsTestData
+      responses:
+        "200":
+          description: Reset completed
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/ops/test/seed-leave:
+    post:
+      tags: [ops]
+      operationId: seedOpsTestLeave
+      responses:
+        "200":
+          description: Seeded leave
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/ops/test/seed-nonworking:
+    post:
+      tags: [ops]
+      operationId: seedOpsTestNonWorking
+      responses:
+        "200":
+          description: Seeded non-working days
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/ops/test/seed-ruleset:
+    post:
+      tags: [ops]
+      operationId: seedOpsTestRuleSet
+      responses:
+        "200":
+          description: Seeded ruleset
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/policy-profiles:
+    get:
+      tags: [policy-profiles]
+      operationId: listPolicyProfiles
+      responses:
+        "200":
+          description: Policy profiles
+    post:
+      tags: [policy-profiles]
+      operationId: createPolicyProfile
+      responses:
+        "200":
+          description: Created
+  /api/attendance/{attendance_day_id}/resolutions:
+    get:
+      tags: [resolutions]
+      operationId: listAttendanceResolutions
+      parameters:
+        - in: path
+          name: attendance_day_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolutions
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      tags: [resolutions]
+      operationId: createAttendanceResolution
+      parameters:
+        - in: path
+          name: attendance_day_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Created
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/attendance/review-queue:
+    get:
+      tags: [resolutions]
+      operationId: listAttendanceReviewQueue
+      responses:
+        "200":
+          description: Review queue
+  /api/resolutions:
+    get:
+      tags: [resolutions]
+      operationId: listResolutions
+      responses:
+        "200":
+          description: Resolutions
+    post:
+      tags: [resolutions]
+      operationId: createResolution
+      responses:
+        "200":
+          description: Created
+  /api/rule-sets:
+    get:
+      tags: [rule-sets]
+      operationId: listRuleSets
+      responses:
+        "200":
+          description: Rule sets
+  /api/simulate/day:
+    post:
+      tags: [simulation]
+      operationId: simulateDay
+      responses:
+        "200":
+          description: Simulation result
+  /api/simulate/range:
+    post:
+      tags: [simulation]
+      operationId: simulateRange
+      responses:
+        "200":
+          description: Simulation result
+  /api/simulation/run:
+    post:
+      tags: [simulation]
+      operationId: runSimulation
+      responses:
+        "200":
+          description: Simulation result
+  /api/system/health:
+    get:
+      tags: [system]
+      operationId: getSystemHealth
+      responses:
+        "200":
+          description: System health
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - engine
+                  - time
+                properties:
+                  status:
+                    type: string
+                  engine:
+                    type: string
+                  time:
+                    type: string
 components:
   parameters:
     company_id:

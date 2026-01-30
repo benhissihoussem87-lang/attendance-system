@@ -1,0 +1,356 @@
+{
+  "generated_at": "2026-01-30T11:16:49.249Z",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/attendance",
+      "normalizedPath": "/api/attendance",
+      "sourceFile": "api/attendance.routes.js",
+      "basePath": "/api/attendance",
+      "routePath": "/",
+      "tag": "attendance"
+    },
+    {
+      "method": "GET",
+      "path": "/api/company-profile",
+      "normalizedPath": "/api/company-profile",
+      "sourceFile": "api/companyProfile.routes.js",
+      "basePath": "/api/company-profile",
+      "routePath": "/",
+      "tag": "company-profile"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/company-profile",
+      "normalizedPath": "/api/company-profile",
+      "sourceFile": "api/companyProfile.routes.js",
+      "basePath": "/api/company-profile",
+      "routePath": "/",
+      "tag": "company-profile"
+    },
+    {
+      "method": "POST",
+      "path": "/api/device-events",
+      "normalizedPath": "/api/device-events",
+      "sourceFile": "api/deviceEvents.routes.js",
+      "basePath": "/api/device-events",
+      "routePath": "/",
+      "tag": "device-events"
+    },
+    {
+      "method": "POST",
+      "path": "/api/device-events/import/preview",
+      "normalizedPath": "/api/device-events/import/preview",
+      "sourceFile": "api/deviceEvents.routes.js",
+      "basePath": "/api/device-events",
+      "routePath": "/import/preview",
+      "tag": "device-events"
+    },
+    {
+      "method": "POST",
+      "path": "/api/device-events/import/preview/export-errors.csv",
+      "normalizedPath": "/api/device-events/import/preview/export-errors.csv",
+      "sourceFile": "api/deviceEvents.routes.js",
+      "basePath": "/api/device-events",
+      "routePath": "/import/preview/export-errors.csv",
+      "tag": "device-events"
+    },
+    {
+      "method": "POST",
+      "path": "/api/device-events/import/commit",
+      "normalizedPath": "/api/device-events/import/commit",
+      "sourceFile": "api/deviceEvents.routes.js",
+      "basePath": "/api/device-events",
+      "routePath": "/import/commit",
+      "tag": "device-events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/devices",
+      "normalizedPath": "/api/devices",
+      "sourceFile": "api/devices.routes.js",
+      "basePath": "/api/devices",
+      "routePath": "/",
+      "tag": "device-registry"
+    },
+    {
+      "method": "GET",
+      "path": "/api/devices/:deviceUid",
+      "normalizedPath": "/api/devices/{param}",
+      "sourceFile": "api/devices.routes.js",
+      "basePath": "/api/devices",
+      "routePath": "/:deviceUid",
+      "tag": "device-registry"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/devices/:deviceUid",
+      "normalizedPath": "/api/devices/{param}",
+      "sourceFile": "api/devices.routes.js",
+      "basePath": "/api/devices",
+      "routePath": "/:deviceUid",
+      "tag": "device-registry"
+    },
+    {
+      "method": "GET",
+      "path": "/api/employee-assignments",
+      "normalizedPath": "/api/employee-assignments",
+      "sourceFile": "api/employeeAssignments.routes.js",
+      "basePath": "/api/employee-assignments",
+      "routePath": "/",
+      "tag": "employee-assignments"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/employee-assignments",
+      "normalizedPath": "/api/employee-assignments",
+      "sourceFile": "api/employeeAssignments.routes.js",
+      "basePath": "/api/employee-assignments",
+      "routePath": "/",
+      "tag": "employee-assignments"
+    },
+    {
+      "method": "GET",
+      "path": "/api/employees",
+      "normalizedPath": "/api/employees",
+      "sourceFile": "api/employees.routes.js",
+      "basePath": "/api/employees",
+      "routePath": "/",
+      "tag": "employees"
+    },
+    {
+      "method": "GET",
+      "path": "/api/employees-registry",
+      "normalizedPath": "/api/employees-registry",
+      "sourceFile": "api/employeesRegistry.routes.js",
+      "basePath": "/api/employees-registry",
+      "routePath": "/",
+      "tag": "employees-registry"
+    },
+    {
+      "method": "GET",
+      "path": "/api/employees-registry/:personId",
+      "normalizedPath": "/api/employees-registry/{param}",
+      "sourceFile": "api/employeesRegistry.routes.js",
+      "basePath": "/api/employees-registry",
+      "routePath": "/:personId",
+      "tag": "employees-registry"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/employees-registry/:personId",
+      "normalizedPath": "/api/employees-registry/{param}",
+      "sourceFile": "api/employeesRegistry.routes.js",
+      "basePath": "/api/employees-registry",
+      "routePath": "/:personId",
+      "tag": "employees-registry"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity-mappings",
+      "normalizedPath": "/api/identity-mappings",
+      "sourceFile": "api/identityMappings.routes.js",
+      "basePath": "/api/identity-mappings",
+      "routePath": "/",
+      "tag": "identity-mappings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity-mappings/lookup",
+      "normalizedPath": "/api/identity-mappings/lookup",
+      "sourceFile": "api/identityMappings.routes.js",
+      "basePath": "/api/identity-mappings",
+      "routePath": "/lookup",
+      "tag": "identity-mappings"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/identity-mappings",
+      "normalizedPath": "/api/identity-mappings",
+      "sourceFile": "api/identityMappings.routes.js",
+      "basePath": "/api/identity-mappings",
+      "routePath": "/",
+      "tag": "identity-mappings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ops/health",
+      "normalizedPath": "/api/ops/health",
+      "sourceFile": "api/ops.routes.js",
+      "basePath": "/api/ops",
+      "routePath": "/health",
+      "tag": "ops"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ops/ready",
+      "normalizedPath": "/api/ops/ready",
+      "sourceFile": "api/ops.routes.js",
+      "basePath": "/api/ops",
+      "routePath": "/ready",
+      "tag": "ops"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ops/test/reset",
+      "normalizedPath": "/api/ops/test/reset",
+      "sourceFile": "api/opsTest.routes.js",
+      "basePath": "/api/ops/test",
+      "routePath": "/reset",
+      "tag": "ops"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ops/test/seed-leave",
+      "normalizedPath": "/api/ops/test/seed-leave",
+      "sourceFile": "api/opsTest.routes.js",
+      "basePath": "/api/ops/test",
+      "routePath": "/seed-leave",
+      "tag": "ops"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ops/test/seed-nonworking",
+      "normalizedPath": "/api/ops/test/seed-nonworking",
+      "sourceFile": "api/opsTest.routes.js",
+      "basePath": "/api/ops/test",
+      "routePath": "/seed-nonworking",
+      "tag": "ops"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ops/test/attendance-days/count",
+      "normalizedPath": "/api/ops/test/attendance-days/count",
+      "sourceFile": "api/opsTest.routes.js",
+      "basePath": "/api/ops/test",
+      "routePath": "/attendance-days/count",
+      "tag": "ops"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ops/test/mode",
+      "normalizedPath": "/api/ops/test/mode",
+      "sourceFile": "api/opsTest.routes.js",
+      "basePath": "/api/ops/test",
+      "routePath": "/mode",
+      "tag": "ops"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ops/test/seed-ruleset",
+      "normalizedPath": "/api/ops/test/seed-ruleset",
+      "sourceFile": "api/opsTest.routes.js",
+      "basePath": "/api/ops/test",
+      "routePath": "/seed-ruleset",
+      "tag": "ops"
+    },
+    {
+      "method": "GET",
+      "path": "/api/policy-profiles",
+      "normalizedPath": "/api/policy-profiles",
+      "sourceFile": "api/policyProfiles.routes.js",
+      "basePath": "/api/policy-profiles",
+      "routePath": "/",
+      "tag": "policy-profiles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/policy-profiles",
+      "normalizedPath": "/api/policy-profiles",
+      "sourceFile": "api/policyProfiles.routes.js",
+      "basePath": "/api/policy-profiles",
+      "routePath": "/",
+      "tag": "policy-profiles"
+    },
+    {
+      "method": "POST",
+      "path": "/api/attendance/:attendance_day_id/resolutions",
+      "normalizedPath": "/api/attendance/{param}/resolutions",
+      "sourceFile": "api/resolutions.routes.js",
+      "basePath": "/api",
+      "routePath": "/attendance/:attendance_day_id/resolutions",
+      "tag": "resolutions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attendance/:attendance_day_id/resolutions",
+      "normalizedPath": "/api/attendance/{param}/resolutions",
+      "sourceFile": "api/resolutions.routes.js",
+      "basePath": "/api",
+      "routePath": "/attendance/:attendance_day_id/resolutions",
+      "tag": "resolutions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/attendance/review-queue",
+      "normalizedPath": "/api/attendance/review-queue",
+      "sourceFile": "api/resolutions.routes.js",
+      "basePath": "/api",
+      "routePath": "/attendance/review-queue",
+      "tag": "resolutions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/resolutions",
+      "normalizedPath": "/api/resolutions",
+      "sourceFile": "api/resolutionsByDate.routes.js",
+      "basePath": "/api/resolutions",
+      "routePath": "/",
+      "tag": "resolutions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/resolutions",
+      "normalizedPath": "/api/resolutions",
+      "sourceFile": "api/resolutionsByDate.routes.js",
+      "basePath": "/api/resolutions",
+      "routePath": "/",
+      "tag": "resolutions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rule-sets",
+      "normalizedPath": "/api/rule-sets",
+      "sourceFile": "api/ruleSets.routes.js",
+      "basePath": "/api/rule-sets",
+      "routePath": "/",
+      "tag": "rule-sets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/simulate/day",
+      "normalizedPath": "/api/simulate/day",
+      "sourceFile": "api/simulate.routes.js",
+      "basePath": "/api/simulate",
+      "routePath": "/day",
+      "tag": "simulation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/simulate/range",
+      "normalizedPath": "/api/simulate/range",
+      "sourceFile": "api/simulate.routes.js",
+      "basePath": "/api/simulate",
+      "routePath": "/range",
+      "tag": "simulation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/simulation/run",
+      "normalizedPath": "/api/simulation/run",
+      "sourceFile": "api/simulation.routes.js",
+      "basePath": "/api/simulation",
+      "routePath": "/run",
+      "tag": "simulation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/system/health",
+      "normalizedPath": "/api/system/health",
+      "sourceFile": "api/system.routes.js",
+      "basePath": "/api/system",
+      "routePath": "/health",
+      "tag": "system"
+    }
+  ]
+}
