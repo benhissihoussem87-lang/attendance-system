@@ -1,5 +1,14 @@
 # Evolution Log
 
+## 2026-01-30
+
+### Changes
+- Added deterministic test server runner: `scripts/run-test-server.ps1`.
+- Hardened `tests/run-all.ps1` with server-mode gating and a clearer ZKTECO env warning.
+- Expanded OpenAPI docs for ops health/ready.
+- Made OpenAPI coverage robust to Windows CRLF.
+- Added OpenAPI endpoint inventory generator and report artifacts.
+
 ## 2026-01-29
 
 ### Goals
