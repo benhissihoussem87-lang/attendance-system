@@ -28,6 +28,7 @@ const {
   getIdentityContext: getAdapterIdentityContext,
   getSupportedVendors
 } = require('../adapters/vendors/registry');
+const { sendError } = require('./lib/errorEnvelope');
 
 function getDelimiter(req) {
   const raw =
@@ -242,7 +243,15 @@ router.post(
           : '';
 
       if (!csvText.trim()) {
-        return res.status(400).json({ error: 'CSV content is required' });
+        return sendError(res, {
+          status: 400,
+          code: 'CSV_VALIDATION',
+          message: 'CSV validation failed',
+          details: {
+            kind: 'csv_validation',
+            error: 'CSV content is required'
+          }
+        });
       }
 
       const options = {};
@@ -261,10 +270,16 @@ router.post(
       const validation = parseDeviceEventsCsv(csvText, options);
       const unknownVendorError = validation.errors.find(err => err.code === 'UNKNOWN_VENDOR');
       if (unknownVendorError) {
-        return res.status(400).json({
-          error: 'unknown_vendor',
-          detail: unknownVendorError.message,
-          supported_vendors: getSupportedVendors()
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'unknown_vendor',
+            detail: unknownVendorError.message,
+            supported_vendors: getSupportedVendors()
+          }
         });
       }
       const companyId = resolveCompanyId(req, null);
@@ -371,12 +386,22 @@ router.post(
     } catch (err) {
       console.error(err);
       if (err && err.code === 'TIME_INTERPRETATION_FAILED') {
-        return res.status(400).json({
-          error: 'Time interpretation failed',
-          details: err.message || 'Invalid event_time'
+        return sendError(res, {
+          status: 400,
+          code: 'CSV_VALIDATION',
+          message: 'CSV validation failed',
+          details: {
+            kind: 'csv_validation',
+            error: 'Time interpretation failed',
+            details: err.message || 'Invalid event_time'
+          }
         });
       }
-      res.status(500).json({ error: 'preview failed' });
+      return sendError(res, {
+        status: 500,
+        code: 'INTERNAL_ERROR',
+        message: 'Server error'
+      });
     }
   }
 );
@@ -396,7 +421,15 @@ router.post(
           : '';
 
       if (!csvText.trim()) {
-        return res.status(400).json({ error: 'CSV content is required' });
+        return sendError(res, {
+          status: 400,
+          code: 'CSV_VALIDATION',
+          message: 'CSV validation failed',
+          details: {
+            kind: 'csv_validation',
+            error: 'CSV content is required'
+          }
+        });
       }
 
       const options = {};
@@ -415,10 +448,16 @@ router.post(
       const validation = parseDeviceEventsCsv(csvText, options);
       const unknownVendorError = validation.errors.find(err => err.code === 'UNKNOWN_VENDOR');
       if (unknownVendorError) {
-        return res.status(400).json({
-          error: 'unknown_vendor',
-          detail: unknownVendorError.message,
-          supported_vendors: getSupportedVendors()
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'unknown_vendor',
+            detail: unknownVendorError.message,
+            supported_vendors: getSupportedVendors()
+          }
         });
       }
       const errorCsv = buildErrorsCsv(validation);
@@ -428,7 +467,11 @@ router.post(
       return res.status(200).send(errorCsv);
     } catch (err) {
       console.error(err);
-      return res.status(500).json({ error: 'export failed' });
+      return sendError(res, {
+        status: 500,
+        code: 'INTERNAL_ERROR',
+        message: 'Server error'
+      });
     }
   }
 );
@@ -442,44 +485,67 @@ router.post(
   '/import/commit',
   express.raw({ type: '*/*', limit: '10mb' }),
   async (req, res) => {
-    const csvText =
-      req.body instanceof Buffer
-        ? req.body.toString('utf8')
-        : '';
-    const companyId = resolveCompanyId(req, null);
+    try {
+      const csvText =
+        req.body instanceof Buffer
+          ? req.body.toString('utf8')
+          : '';
+      const companyId = resolveCompanyId(req, null);
 
-    if (!csvText.trim()) {
-      return res.status(400).json({ error: 'CSV content is required' });
-    }
+      if (!csvText.trim()) {
+        return sendError(res, {
+          status: 400,
+          code: 'CSV_VALIDATION',
+          message: 'CSV validation failed',
+          details: {
+            kind: 'csv_validation',
+            error: 'CSV content is required'
+          }
+        });
+      }
 
-    const options = {};
-    const vendor = getVendor(req);
-    if (vendor) {
-      options.vendor = vendor;
-    }
-    if (vendor === 'anviz' && isPlainText(req)) {
-      options.delimiter = '\t';
-    }
-    const delimiter = getDelimiter(req);
-    if (delimiter) {
-      options.delimiter = delimiter;
-    }
-    const validationResult = parseDeviceEventsCsv(csvText, options);
-    const unknownVendorError = validationResult.errors.find(err => err.code === 'UNKNOWN_VENDOR');
-    if (unknownVendorError) {
-      return res.status(400).json({
-        error: 'unknown_vendor',
-        detail: unknownVendorError.message,
-        supported_vendors: getSupportedVendors()
-      });
-    }
-    const missingRequired = validationResult.errors.some(
-      err => err.code === 'MISSING_REQUIRED_COLUMN'
-    );
+      const options = {};
+      const vendor = getVendor(req);
+      if (vendor) {
+        options.vendor = vendor;
+      }
+      if (vendor === 'anviz' && isPlainText(req)) {
+        options.delimiter = '\t';
+      }
+      const delimiter = getDelimiter(req);
+      if (delimiter) {
+        options.delimiter = delimiter;
+      }
+      const validationResult = parseDeviceEventsCsv(csvText, options);
+      const unknownVendorError = validationResult.errors.find(err => err.code === 'UNKNOWN_VENDOR');
+      if (unknownVendorError) {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'unknown_vendor',
+            detail: unknownVendorError.message,
+            supported_vendors: getSupportedVendors()
+          }
+        });
+      }
+      const missingRequired = validationResult.errors.some(
+        err => err.code === 'MISSING_REQUIRED_COLUMN'
+      );
 
-    if (missingRequired) {
-      return res.status(400).json(validationResult);
-    }
+      if (missingRequired) {
+        return sendError(res, {
+          status: 400,
+          code: 'CSV_VALIDATION',
+          message: 'CSV validation failed',
+          details: {
+            kind: 'csv_validation',
+            ...validationResult
+          }
+        });
+      }
 
     const identityByRow = new Map();
     if (Array.isArray(validationResult.rows)) {
@@ -501,9 +567,15 @@ router.post(
           requireMappings
         });
         if (resolution.error === 'identity_mapping_missing') {
-          return res.status(400).json({
-            error: 'identity_mapping_missing',
-            row_number: row.row_number
+          return sendError(res, {
+            status: 400,
+            code: 'IMPORT_ERROR',
+            message: 'Import error',
+            details: {
+              kind: 'import_error',
+              error: 'identity_mapping_missing',
+              row_number: row.row_number
+            }
           });
         }
         identityByRow.set(row.row_number, {
@@ -875,22 +947,30 @@ router.post(
       }
     }
 
-    return res.json({
-      system_version: SYSTEM_VERSION,
-      contract: CSV_CONTRACT,
-      import_version: CSV_IMPORT_VERSION,
-      total_rows: validationResult.total_rows,
-      valid_rows: validationResult.valid_rows,
-      invalid_rows: validationResult.invalid_rows,
-      inserted_rows,
-      skipped_rows,
-      failed_rows,
-      errors,
-      inserted_samples: {
-        first3: first3Inserted,
-        last3: last3Inserted
-      }
-    });
+      return res.json({
+        system_version: SYSTEM_VERSION,
+        contract: CSV_CONTRACT,
+        import_version: CSV_IMPORT_VERSION,
+        total_rows: validationResult.total_rows,
+        valid_rows: validationResult.valid_rows,
+        invalid_rows: validationResult.invalid_rows,
+        inserted_rows,
+        skipped_rows,
+        failed_rows,
+        errors,
+        inserted_samples: {
+          first3: first3Inserted,
+          last3: last3Inserted
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      return sendError(res, {
+        status: 500,
+        code: 'INTERNAL_ERROR',
+        message: 'Server error'
+      });
+    }
   }
 );
 

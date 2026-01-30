@@ -67,6 +67,13 @@ function ensureArray(value, label) {
   assert.ok(Array.isArray(value), `${label} must be array`);
 }
 
+function assertErrorEnvelope(body) {
+  assert.ok(body, 'error response body is required');
+  ensureString(body.error, 'error.error');
+  ensureString(body.code, 'error.code');
+  ensureString(body.message, 'error.message');
+}
+
 function getBaseUrl() {
   return process.env.BASE_URL || 'http://localhost:3000';
 }
@@ -248,8 +255,79 @@ async function testPreviewContract() {
   );
 }
 
+async function testCsvErrorEnvelope() {
+  const baseUrl = getBaseUrl();
+
+  const previewEmpty = await requestJson({
+    method: 'POST',
+    url: `${baseUrl}/api/device-events/import/preview`,
+    headers: { 'content-type': 'text/plain' },
+    body: ''
+  });
+
+  assert.strictEqual(previewEmpty.status, 400, 'preview empty should return 400');
+  assertErrorEnvelope(previewEmpty.body);
+  assert.strictEqual(previewEmpty.body.code, 'CSV_VALIDATION', 'preview empty code should be CSV_VALIDATION');
+  assert.strictEqual(previewEmpty.body.message, 'CSV validation failed', 'preview empty message mismatch');
+  assert.ok(
+    previewEmpty.body.details && previewEmpty.body.details.kind === 'csv_validation',
+    'preview empty details.kind should be csv_validation'
+  );
+  assert.strictEqual(
+    previewEmpty.body.details.error,
+    'CSV content is required',
+    'preview empty details.error mismatch'
+  );
+
+  const previewUnknownVendor = await requestJson({
+    method: 'POST',
+    url: `${baseUrl}/api/device-events/import/preview`,
+    headers: { 'content-type': 'text/plain', 'x-vendor': 'unknown_vendor_test' },
+    body: 'person_id,event_time,direction\np1,2026-01-07 08:00:00,IN'
+  });
+
+  assert.strictEqual(previewUnknownVendor.status, 400, 'preview unknown vendor should return 400');
+  assertErrorEnvelope(previewUnknownVendor.body);
+  assert.strictEqual(
+    previewUnknownVendor.body.code,
+    'IMPORT_ERROR',
+    'preview unknown vendor code should be IMPORT_ERROR'
+  );
+  assert.ok(
+    previewUnknownVendor.body.details && previewUnknownVendor.body.details.kind === 'import_error',
+    'preview unknown vendor details.kind should be import_error'
+  );
+  assert.strictEqual(
+    previewUnknownVendor.body.details.error,
+    'unknown_vendor',
+    'preview unknown vendor details.error mismatch'
+  );
+  ensureArray(previewUnknownVendor.body.details.supported_vendors || [], 'supported_vendors');
+
+  const commitMissingColumns = await requestJson({
+    method: 'POST',
+    url: `${baseUrl}/api/device-events/import/commit`,
+    headers: { 'content-type': 'text/plain' },
+    body: 'person_id,event_time\np1,2026-01-07 08:00:00'
+  });
+
+  assert.strictEqual(commitMissingColumns.status, 400, 'commit missing columns should return 400');
+  assertErrorEnvelope(commitMissingColumns.body);
+  assert.strictEqual(
+    commitMissingColumns.body.code,
+    'CSV_VALIDATION',
+    'commit missing columns code should be CSV_VALIDATION'
+  );
+  assert.ok(
+    commitMissingColumns.body.details && commitMissingColumns.body.details.kind === 'csv_validation',
+    'commit missing columns details.kind should be csv_validation'
+  );
+  ensureArray(commitMissingColumns.body.details.errors || [], 'commit missing columns details.errors');
+}
+
 async function run() {
   await testPreviewContract();
+  await testCsvErrorEnvelope();
   console.log('preview output contract tests passed');
 }
 

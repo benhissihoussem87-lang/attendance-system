@@ -121,15 +121,13 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/DeviceEventsImportError"
-                  - $ref: "#/components/schemas/DeviceEventsCsvValidation"
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/devices:
     get:
       tags: [device-registry]
@@ -427,13 +425,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/company-profile:
     get:
       tags: [company-profile]
@@ -555,15 +553,13 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                  - $ref: "#/components/schemas/DeviceEventsImportError"
-                  - $ref: "#/components/schemas/DeviceEventsCsvValidation"
+                $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Server error
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/employee-assignments:
     get:
       tags: [employee-assignments]
@@ -970,84 +966,6 @@ components:
           type: string
         vendor:
           type: string
-    DeviceEventsImportError:
-      type: object
-      required:
-        - error
-      properties:
-        error:
-          type: string
-        detail:
-          type: string
-        details:
-          type: string
-        supported_vendors:
-          type: array
-          items:
-            type: string
-        row_number:
-          type: integer
-    DeviceEventsCsvValidation:
-      type: object
-      required:
-        - total_rows
-        - valid_rows
-        - invalid_rows
-        - rows
-        - errors
-        - meta
-      properties:
-        total_rows:
-          type: integer
-        valid_rows:
-          type: integer
-        invalid_rows:
-          type: integer
-        rows:
-          type: array
-          items:
-            $ref: "#/components/schemas/DeviceEventsCsvValidationRow"
-        errors:
-          type: array
-          items:
-            $ref: "#/components/schemas/PreviewError"
-        meta:
-          $ref: "#/components/schemas/DeviceEventsCsvValidationMeta"
-    DeviceEventsCsvValidationRow:
-      type: object
-      required:
-        - row_number
-        - valid
-      properties:
-        row_number:
-          type: integer
-        valid:
-          type: boolean
-        data:
-          type: object
-        errors:
-          type: array
-          items:
-            $ref: "#/components/schemas/PreviewError"
-    DeviceEventsCsvValidationMeta:
-      type: object
-      required:
-        - detected_delimiter
-        - raw_headers
-        - normalized_headers
-      properties:
-        detected_delimiter:
-          type: string
-        raw_headers:
-          type: array
-          items:
-            type: string
-        normalized_headers:
-          type: array
-          items:
-            type: string
-        vendor:
-          type: string
     PreviewError:
       type: object
       required:
@@ -1247,6 +1165,20 @@ components:
           type: string
         detail:
           type: string
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+        - message
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
     ConflictResponse:
       type: object
       required:
