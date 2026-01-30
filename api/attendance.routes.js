@@ -17,6 +17,7 @@ const { getEmployee } = require('../services/employeesDb');
 const { resolveRuleSetIdForDate } = require('../services/employeeAssignmentsService');
 const { getEmployeeDisplay } = require('../services/employeeDirectory');
 const { toBool } = require('../services/envBool');
+const { sendError } = require('./lib/errorEnvelope');
 const {
   buildComputationSignature,
   isSignatureCompatible
@@ -122,11 +123,32 @@ function isValidDateString(value) {
   return !Number.isNaN(parsed.getTime());
 }
 
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
+}
+
 router.get('/', async (req, res) => {
   try {
     const date = req.query.date;
     if (!isValidDateString(date)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+      return sendValidationError(res, 'date_invalid', 'date must be YYYY-MM-DD');
     }
     const employee = employees[0];
     const personIdParam = req.query.person_id;
@@ -136,7 +158,7 @@ router.get('/', async (req, res) => {
     const ruleSetIdParam = req.query.rule_set_id;
     const ruleSetIdRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (ruleSetIdParam && !ruleSetIdRegex.test(ruleSetIdParam)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a UUID' });
+      return sendValidationError(res, 'rule_set_id_invalid', 'rule_set_id must be a UUID');
     }
     const assignmentsEnabled = toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS);
     let assignmentResolution = null;
@@ -223,7 +245,7 @@ router.get('/', async (req, res) => {
       ruleSetSelection = resolved.meta;
     } catch (err) {
       if (err.code === 'RULE_SET_NOT_FOUND') {
-        return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id not found' });
+        return sendValidationError(res, 'rule_set_id_not_found', 'rule_set_id not found');
       }
       throw err;
     }
@@ -523,7 +545,7 @@ router.get('/', async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'attendance computation failed' });
+    return sendInternalError(res);
   }
 });
 

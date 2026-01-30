@@ -426,12 +426,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid date format
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: date_invalid
+                      detail: date must be YYYY-MM-DD
         "500":
           description: Server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
   /api/employees-registry/{person_id}:
     get:
       tags: [employees-registry]
