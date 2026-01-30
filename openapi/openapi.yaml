@@ -122,6 +122,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing/invalid company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: company_id is required
         "500":
           description: Server error
           content:
@@ -157,7 +168,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/devices/{device_uid}:
     get:
       tags: [device-registry]
@@ -178,13 +189,34 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing/invalid company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: company_id is required
         "404":
           description: Device not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                lookup_not_found:
+                  summary: Device not found
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Device not found
+                    details:
+                      kind: lookup_error
+                      error: device_not_found
     put:
       tags: [device-registry]
       operationId: upsertDevice
@@ -210,7 +242,28 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing/invalid company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: company_id is required
+                company_id_not_found:
+                  summary: company_id not found
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_not_found
+                      detail: company_id not found
   /api/identity-mappings:
     get:
       tags: [identity-mappings]
