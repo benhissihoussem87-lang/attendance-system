@@ -206,6 +206,7 @@ Run-NodeTest 'contracts\openapi.lint.test.js'
 Run-NodeTest 'contracts\openapi.coverage.test.js'
 Run-NodeTest 'contracts\openapi.deviceRegistry.coverage.test.js'
 Run-NodeTest 'contracts\devicesRegistry.contract.test.js'
+Run-NodeTest 'contracts\deviceEvents.jsonIngest.errorEnvelope.contract.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'contracts\db.devicesTable.smoke.test.js'
 } else {

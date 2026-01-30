@@ -121,18 +121,45 @@ router.post('/', async (req, res) => {
     let parsedPayload = raw_payload;
 
     if (!person_id || !event_time_utc || !direction) {
-      return res.status(400).json({ error: 'Missing required fields' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'missing_required_fields',
+          detail: 'Missing required fields'
+        }
+      });
     }
 
     if (!['IN', 'OUT'].includes(direction)) {
-      return res.status(400).json({ error: 'Invalid direction' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_direction',
+          detail: 'Invalid direction'
+        }
+      });
     }
 
     if (typeof raw_payload === 'string') {
       try {
         parsedPayload = JSON.parse(raw_payload);
       } catch (err) {
-        return res.status(400).json({ error: 'Invalid raw_payload JSON' });
+        return sendError(res, {
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: 'Validation failed',
+          details: {
+            kind: 'validation',
+            error: 'invalid_raw_payload',
+            detail: 'Invalid raw_payload JSON'
+          }
+        });
       }
     }
 
@@ -141,7 +168,16 @@ router.post('/', async (req, res) => {
       sanitizedDeviceUid = requireDeviceUid(device_uid);
     } catch (err) {
       if (err.code === 'DEVICE_ID_REQUIRED') {
-        return res.status(400).json({ error: 'DEVICE_ID_REQUIRED' });
+        return sendError(res, {
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          message: 'Validation failed',
+          details: {
+            kind: 'validation',
+            error: 'DEVICE_ID_REQUIRED',
+            detail: 'DEVICE_ID_REQUIRED'
+          }
+        });
       }
       throw err;
     }
@@ -173,7 +209,15 @@ router.post('/', async (req, res) => {
         requireMappings
       });
       if (resolution.error === 'identity_mapping_missing') {
-        return res.status(400).json({ error: 'identity_mapping_missing' });
+        return sendError(res, {
+          status: 400,
+          code: 'INGEST_ERROR',
+          message: 'Ingest error',
+          details: {
+            kind: 'ingest_error',
+            error: 'identity_mapping_missing'
+          }
+        });
       }
       resolvedPersonId = resolution.person_id || resolvedPersonId;
       if (hasIdentityInputs) {
@@ -223,7 +267,11 @@ router.post('/', async (req, res) => {
     res.status(201).json({ status: 'ok' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'device event insert failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 

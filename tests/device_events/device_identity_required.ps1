@@ -73,8 +73,14 @@ try {
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.error -ne 'DEVICE_ID_REQUIRED') {
-      throw ("expected DEVICE_ID_REQUIRED, got {0}" -f $info.json.error)
+    if ($info.json.code -ne 'VALIDATION_ERROR') {
+      throw ("expected VALIDATION_ERROR, got {0}" -f $info.json.code)
+    }
+    if (-not $info.json.details -or $info.json.details.kind -ne 'validation') {
+      throw 'expected details.kind=validation'
+    }
+    if ($info.json.details.error -ne 'DEVICE_ID_REQUIRED') {
+      throw ("expected DEVICE_ID_REQUIRED, got {0}" -f $info.json.details.error)
     }
   }
 

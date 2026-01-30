@@ -97,8 +97,14 @@ try {
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.error -ne 'identity_mapping_missing') {
-      throw ("expected identity_mapping_missing, got {0}" -f $info.json.error)
+    if ($info.json.code -ne 'INGEST_ERROR') {
+      throw ("expected INGEST_ERROR, got {0}" -f $info.json.code)
+    }
+    if (-not $info.json.details -or $info.json.details.kind -ne 'ingest_error') {
+      throw 'expected details.kind=ingest_error'
+    }
+    if ($info.json.details.error -ne 'identity_mapping_missing') {
+      throw ("expected identity_mapping_missing, got {0}" -f $info.json.details.error)
     }
   }
 
