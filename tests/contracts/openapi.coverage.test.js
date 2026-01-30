@@ -52,10 +52,11 @@ function run() {
   const repoRoot = path.resolve(__dirname, '..', '..');
   const specPath = path.join(repoRoot, 'openapi', 'openapi.yaml');
   const text = readSpec(specPath);
+  const normalized = text.replace(/\r\n/g, '\n');
 
   requiredPaths.forEach(pathString => {
-    assert.ok(text.includes(pathString), `OpenAPI spec missing path ${pathString}`);
-    assertOperationId(text, pathString);
+    assert.ok(normalized.includes(pathString), `OpenAPI spec missing path ${pathString}`);
+    assertOperationId(normalized, pathString);
   });
 
   console.log('openapi coverage tests passed');
