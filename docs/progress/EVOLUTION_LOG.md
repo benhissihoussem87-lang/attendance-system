@@ -8,6 +8,7 @@
 - Expanded OpenAPI docs for ops health/ready.
 - Made OpenAPI coverage robust to Windows CRLF.
 - Added OpenAPI endpoint inventory generator and report artifacts.
+- Ignored the generated endpoint inventory JSON to avoid timestamp-only churn; documented inventory/report expectations.
 
 ## 2026-01-29
 

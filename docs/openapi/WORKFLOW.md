@@ -12,8 +12,8 @@ When routes change, regenerate the inventory to spot spec drift:
 - `node .\scripts\build-endpoint-inventory.js`
 
 Artifacts:
-- `docs/openapi/endpoint-inventory.json`
-- `docs/openapi/endpoint-inventory-report.md`
+- `docs/openapi/endpoint-inventory.json` (generated locally/CI; not committed because it includes a timestamp)
+- `docs/openapi/endpoint-inventory-report.md` (committed; use this to review drift findings)
 
 Expectation:
 - `openapi/openapi.yaml` should contain a path block with an `operationId` for each route implemented under `api/*.routes.js`.

@@ -45,6 +45,11 @@ tools/zkteco/*errors*.csv
 preview-errors.csv
 
 # =========================
+# OpenAPI inventory artifacts
+# =========================
+docs/openapi/endpoint-inventory.json
+
+# =========================
 # Local / temporary backups
 # =========================
 *backup*
