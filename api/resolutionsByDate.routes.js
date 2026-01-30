@@ -6,6 +6,7 @@ const {
   createManualResolution,
   listResolutions
 } = require('../services/policy/manualResolutionService');
+const { sendError } = require('./lib/errorEnvelope');
 
 function isValidDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -17,6 +18,40 @@ function isValidDateString(value) {
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendNotFound(res, detail) {
+  return sendError(res, {
+    status: 404,
+    code: 'LOOKUP_NOT_FOUND',
+    message: 'Attendance day not found',
+    details: {
+      kind: 'lookup_error',
+      error: 'attendance_day_not_found',
+      detail
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
 }
 
 router.post('/', async (req, res) => {
@@ -32,22 +67,22 @@ router.post('/', async (req, res) => {
   } = req.body || {};
 
   if (!isNonEmptyString(company_id)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'company_id is required' });
+    return sendValidationError(res, 'company_id_required', 'company_id is required');
   }
   if (!isNonEmptyString(person_id)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+    return sendValidationError(res, 'person_id_required', 'person_id is required');
   }
   if (!isNonEmptyString(decided_by)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'decided_by is required' });
+    return sendValidationError(res, 'decided_by_required', 'decided_by is required');
   }
   if (!isNonEmptyString(effective_status)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'effective_status is required' });
+    return sendValidationError(res, 'effective_status_required', 'effective_status is required');
   }
   if (!isValidDateString(date)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+    return sendValidationError(res, 'date_invalid', 'date must be YYYY-MM-DD');
   }
   if (override !== undefined && (override === null || typeof override !== 'object' || Array.isArray(override))) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'override must be an object' });
+    return sendValidationError(res, 'override_invalid', 'override must be an object');
   }
 
   try {
@@ -59,10 +94,7 @@ router.post('/', async (req, res) => {
     `, [company_id.trim(), person_id.trim(), date]);
 
     if (attendanceDayRes.rows.length === 0) {
-      return res.status(404).json({
-        error: 'ATTENDANCE_DAY_NOT_FOUND',
-        detail: 'Call /api/attendance first to compute the day.'
-      });
+      return sendNotFound(res, 'Call /api/attendance first to compute the day.');
     }
 
     const row = await createManualResolution(db, {
@@ -79,7 +111,7 @@ router.post('/', async (req, res) => {
     return res.status(201).json({ value: row });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'resolution_create_failed' });
+    return sendInternalError(res);
   }
 });
 
@@ -91,10 +123,10 @@ router.get('/', async (req, res) => {
   const date = req.query.date;
 
   if (!isNonEmptyString(personId)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+    return sendValidationError(res, 'person_id_required', 'person_id is required');
   }
   if (!isValidDateString(date)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+    return sendValidationError(res, 'date_invalid', 'date must be YYYY-MM-DD');
   }
 
   try {
@@ -106,17 +138,14 @@ router.get('/', async (req, res) => {
     `, [companyId, personId.trim(), date]);
 
     if (attendanceDayRes.rows.length === 0) {
-      return res.status(404).json({
-        error: 'ATTENDANCE_DAY_NOT_FOUND',
-        detail: 'Call /api/attendance first to compute the day.'
-      });
+      return sendNotFound(res, 'Call /api/attendance first to compute the day.');
     }
 
     const rows = await listResolutions(db, attendanceDayRes.rows[0].id);
     return res.json({ value: rows });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'resolution_list_failed' });
+    return sendInternalError(res);
   }
 });
 

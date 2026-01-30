@@ -6,6 +6,7 @@ const {
   createManualResolution,
   listResolutions
 } = require('../services/policy/manualResolutionService');
+const { sendError } = require('./lib/errorEnvelope');
 
 const ALLOWED_EFFECTIVE_STATUSES = new Set([
   'PRESENT',
@@ -31,10 +32,31 @@ function isValidUuid(value) {
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value);
 }
 
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
+}
+
 router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
   const attendanceDayId = req.params.attendance_day_id;
   if (!isValidUuid(attendanceDayId)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'attendance_day_id must be a UUID' });
+    return sendValidationError(res, 'attendance_day_id_invalid', 'attendance_day_id must be a UUID');
   }
 
   const {
@@ -48,11 +70,11 @@ router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
   } = req.body || {};
 
   if (!decided_by || String(decided_by).trim().length === 0) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'decided_by is required' });
+    return sendValidationError(res, 'decided_by_required', 'decided_by is required');
   }
 
   if (!effective_status || !ALLOWED_EFFECTIVE_STATUSES.has(effective_status)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'effective_status not allowed' });
+    return sendValidationError(res, 'effective_status_invalid', 'effective_status not allowed');
   }
 
   try {
@@ -70,14 +92,14 @@ router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
     return res.status(201).json(row);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'resolution_create_failed' });
+    return sendInternalError(res);
   }
 });
 
 router.get('/attendance/:attendance_day_id/resolutions', async (req, res) => {
   const attendanceDayId = req.params.attendance_day_id;
   if (!isValidUuid(attendanceDayId)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'attendance_day_id must be a UUID' });
+    return sendValidationError(res, 'attendance_day_id_invalid', 'attendance_day_id must be a UUID');
   }
 
   try {
@@ -85,7 +107,7 @@ router.get('/attendance/:attendance_day_id/resolutions', async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'resolution_list_failed' });
+    return sendInternalError(res);
   }
 });
 
