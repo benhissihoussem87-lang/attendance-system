@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
+const { sendError } = require('./lib/errorEnvelope');
 const {
   getCompanyProfile,
   upsertCompanyProfile
@@ -29,21 +30,54 @@ function resolveCompanyId(req, body) {
   return { value: bodyId || queryId || headerId || 'DEFAULT' };
 }
 
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendNotFound(res) {
+  return sendError(res, {
+    status: 404,
+    code: 'LOOKUP_NOT_FOUND',
+    message: 'Company profile not found',
+    details: {
+      kind: 'lookup_error',
+      error: 'company_profile_not_found'
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
+}
+
 router.get('/', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendValidationError(res, 'company_id_mismatch', resolved.error);
     }
     const companyId = resolved.value;
     const profile = await getCompanyProfile(db, companyId);
     if (!profile) {
-      return res.status(404).json({ error: 'company_profile_not_found' });
+      return sendNotFound(res);
     }
     return res.json(profile);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'company_profile_fetch_failed' });
+    return sendInternalError(res);
   }
 });
 
@@ -51,12 +85,12 @@ router.put('/', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, req.body || {});
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendValidationError(res, 'company_id_mismatch', resolved.error);
     }
     const companyId = resolved.value;
     const metadata = req.body ? req.body.metadata : undefined;
     if (!isPlainObject(metadata)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'metadata must be an object' });
+      return sendValidationError(res, 'metadata_invalid', 'metadata must be an object');
     }
 
     const exists = await db.query(`
@@ -65,14 +99,14 @@ router.put('/', async (req, res) => {
       WHERE company_id = $1
     `, [companyId]);
     if (exists.rows.length === 0) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'company_id not found' });
+      return sendValidationError(res, 'company_id_not_found', 'company_id not found');
     }
 
     const saved = await upsertCompanyProfile(db, companyId, metadata);
     return res.json(saved);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'company_profile_save_failed' });
+    return sendInternalError(res);
   }
 });
 

@@ -545,13 +545,47 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Company id mismatch
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_mismatch
+                      detail: company_id mismatch between query and header
         "404":
           description: Not found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_found:
+                  summary: Missing company profile
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Company profile not found
+                    details:
+                      kind: lookup_error
+                      error: company_profile_not_found
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
     put:
       tags: [company-profile]
       operationId: upsertCompanyProfile
@@ -566,7 +600,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid metadata payload
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: metadata_invalid
+                      detail: metadata must be an object
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
   /api/device-events:
     post:
       tags: [device-events]
