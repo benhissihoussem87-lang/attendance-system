@@ -86,14 +86,21 @@ paths:
       tags: [device-events]
       operationId: previewDeviceEventsCsv
       parameters:
+        - $ref: "#/components/parameters/company_id"
         - in: query
-          name: company_id
+          name: vendor
           schema:
             type: string
-            default: DEFAULT
         - in: header
           name: x-vendor
-          required: true
+          schema:
+            type: string
+        - in: query
+          name: delimiter
+          schema:
+            type: string
+        - in: header
+          name: x-csv-delimiter
           schema:
             type: string
       requestBody:
@@ -109,6 +116,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreviewResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/DeviceEventsImportError"
+                  - $ref: "#/components/schemas/DeviceEventsCsvValidation"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/devices:
     get:
       tags: [device-registry]
@@ -498,15 +519,45 @@ paths:
     post:
       tags: [device-events]
       operationId: commitDeviceEventsImport
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: vendor
+          schema:
+            type: string
+        - in: header
+          name: x-vendor
+          schema:
+            type: string
+        - in: query
+          name: delimiter
+          schema:
+            type: string
+        - in: header
+          name: x-csv-delimiter
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
       responses:
         "200":
           description: Commit result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceEventsCommitResponse"
         "400":
           description: Invalid request
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                oneOf:
+                  - $ref: "#/components/schemas/DeviceEventsImportError"
+                  - $ref: "#/components/schemas/DeviceEventsCsvValidation"
         "500":
           description: Server error
           content:
@@ -844,6 +895,159 @@ components:
             $ref: "#/components/schemas/PreviewSampleRow"
         error_intelligence:
           type: object
+    DeviceEventsCommitResponse:
+      type: object
+      required:
+        - system_version
+        - contract
+        - import_version
+        - total_rows
+        - valid_rows
+        - invalid_rows
+        - inserted_rows
+        - skipped_rows
+        - failed_rows
+        - errors
+        - inserted_samples
+      properties:
+        system_version:
+          type: string
+        contract:
+          type: string
+        import_version:
+          type: string
+        total_rows:
+          type: integer
+        valid_rows:
+          type: integer
+        invalid_rows:
+          type: integer
+        inserted_rows:
+          type: integer
+        skipped_rows:
+          type: integer
+        failed_rows:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewError"
+        inserted_samples:
+          $ref: "#/components/schemas/DeviceEventsCommitInsertedSamples"
+    DeviceEventsCommitInsertedSamples:
+      type: object
+      required:
+        - first3
+        - last3
+      properties:
+        first3:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventsCommitInsertedSample"
+        last3:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventsCommitInsertedSample"
+    DeviceEventsCommitInsertedSample:
+      type: object
+      required:
+        - row_number
+        - person_id
+        - event_time_utc
+        - direction
+        - device_uid
+        - vendor
+      properties:
+        row_number:
+          type: integer
+        person_id:
+          type: string
+        event_time_utc:
+          type: string
+        direction:
+          type: string
+        device_uid:
+          type: string
+        vendor:
+          type: string
+    DeviceEventsImportError:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        details:
+          type: string
+        supported_vendors:
+          type: array
+          items:
+            type: string
+        row_number:
+          type: integer
+    DeviceEventsCsvValidation:
+      type: object
+      required:
+        - total_rows
+        - valid_rows
+        - invalid_rows
+        - rows
+        - errors
+        - meta
+      properties:
+        total_rows:
+          type: integer
+        valid_rows:
+          type: integer
+        invalid_rows:
+          type: integer
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventsCsvValidationRow"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewError"
+        meta:
+          $ref: "#/components/schemas/DeviceEventsCsvValidationMeta"
+    DeviceEventsCsvValidationRow:
+      type: object
+      required:
+        - row_number
+        - valid
+      properties:
+        row_number:
+          type: integer
+        valid:
+          type: boolean
+        data:
+          type: object
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewError"
+    DeviceEventsCsvValidationMeta:
+      type: object
+      required:
+        - detected_delimiter
+        - raw_headers
+        - normalized_headers
+      properties:
+        detected_delimiter:
+          type: string
+        raw_headers:
+          type: array
+          items:
+            type: string
+        normalized_headers:
+          type: array
+          items:
+            type: string
+        vendor:
+          type: string
     PreviewError:
       type: object
       required:
