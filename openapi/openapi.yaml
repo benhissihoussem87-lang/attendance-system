@@ -739,7 +739,31 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Company id mismatch
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_mismatch
+                      detail: company_id mismatch
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
     put:
       tags: [employee-assignments]
       operationId: upsertEmployeeAssignment
@@ -751,13 +775,48 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
         "409":
           description: Conflict
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                conflict:
+                  summary: Overlapping assignment
+                  value:
+                    error: conflict
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: assignment_range_overlap
+                      detail: assignment range overlaps existing assignment
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
   /api/employees:
     get:
       tags: [employees]

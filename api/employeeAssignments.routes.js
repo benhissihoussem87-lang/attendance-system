@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../db');
+const { sendError } = require('./lib/errorEnvelope');
 
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
@@ -50,11 +51,45 @@ function isValidUuid(value) {
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value);
 }
 
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendConflictError(res, error, detail) {
+  return sendError(res, {
+    status: 409,
+    code: 'CONFLICT',
+    message: 'Conflict',
+    details: {
+      kind: 'conflict',
+      error,
+      detail
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
+}
+
 router.get('/', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendValidationError(res, 'company_id_mismatch', resolved.error);
     }
     const companyId = resolved.value;
     const personId = typeof req.query.person_id === 'string' && req.query.person_id.trim()
@@ -84,7 +119,7 @@ router.get('/', async (req, res) => {
     return res.json(result.rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'employee_assignments_fetch_failed' });
+    return sendInternalError(res);
   }
 });
 
@@ -93,7 +128,7 @@ router.put('/', async (req, res) => {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendValidationError(res, 'company_id_mismatch', resolved.error);
     }
     const companyId = resolved.value;
 
@@ -103,22 +138,22 @@ router.put('/', async (req, res) => {
     const validTo = typeof body.valid_to === 'string' ? body.valid_to.trim() : null;
 
     if (!personId) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+      return sendValidationError(res, 'person_id_required', 'person_id is required');
     }
     if (!ruleSetId || !isValidUuid(ruleSetId)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a valid UUID' });
+      return sendValidationError(res, 'rule_set_id_invalid', 'rule_set_id must be a valid UUID');
     }
     if (!validFrom || !isValidDateString(validFrom)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'valid_from must be YYYY-MM-DD' });
+      return sendValidationError(res, 'valid_from_invalid', 'valid_from must be YYYY-MM-DD');
     }
     if (validTo && !isValidDateString(validTo)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'valid_to must be YYYY-MM-DD' });
+      return sendValidationError(res, 'valid_to_invalid', 'valid_to must be YYYY-MM-DD');
     }
     if (validTo && new Date(validTo) < new Date(validFrom)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'valid_to must be >= valid_from' });
+      return sendValidationError(res, 'valid_to_range_invalid', 'valid_to must be >= valid_from');
     }
     if (Object.prototype.hasOwnProperty.call(body, 'metadata') && !isPlainObject(body.metadata)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'metadata must be an object' });
+      return sendValidationError(res, 'metadata_invalid', 'metadata must be an object');
     }
 
     const overlap = await db.query(`
@@ -135,7 +170,11 @@ router.put('/', async (req, res) => {
     `, [companyId, personId, validFrom, validTo]);
 
     if (overlap.rows.length > 0) {
-      return res.status(409).json({ error: 'conflict', detail: 'assignment range overlaps existing assignment' });
+      return sendConflictError(
+        res,
+        'assignment_range_overlap',
+        'assignment range overlaps existing assignment'
+      );
     }
 
     const saved = await db.query(`
@@ -160,7 +199,7 @@ router.put('/', async (req, res) => {
     return res.json(saved.rows[0]);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'employee_assignments_save_failed' });
+    return sendInternalError(res);
   }
 });
 
