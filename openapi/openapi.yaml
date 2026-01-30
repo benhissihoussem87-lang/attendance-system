@@ -39,7 +39,22 @@ paths:
       operationId: getOpsReady
       responses:
         "200":
-          description: OK
+          description: Ready check
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - db
+                  - system_version
+                properties:
+                  status:
+                    type: string
+                  db:
+                    type: string
+                  system_version:
+                    type: string
   /api/ops/test/mode:
     get:
       tags: [ops]
