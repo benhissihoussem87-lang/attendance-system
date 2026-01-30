@@ -1,46 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-try {
-  $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
-  if (-not $mode.allow_test_endpoints) {
-    Write-Host "FAIL: server mode check"
-    Write-Host "---- ERROR ----"
-    Write-Host "This test suite requires ALLOW_TEST_ENDPOINTS enabled (true/1)"
-    Write-Host "Base URL: $baseUrl"
-    exit 1
-  }
-
-  if ($mode.use_identity_mappings) {
-    $env:USE_IDENTITY_MAPPINGS = '1'
-  } else {
-    Remove-Item Env:USE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
-  }
-  if ($mode.require_identity_mappings) {
-    $env:REQUIRE_IDENTITY_MAPPINGS = '1'
-  } else {
-    Remove-Item Env:REQUIRE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
-  }
-  if ($mode.use_employees_registry) {
-    $env:USE_EMPLOYEES_REGISTRY = '1'
-  } else {
-    Remove-Item Env:USE_EMPLOYEES_REGISTRY -ErrorAction SilentlyContinue
-  }
-  if ($mode.use_employee_assignments) {
-    $env:USE_EMPLOYEE_ASSIGNMENTS = '1'
-  } else {
-    Remove-Item Env:USE_EMPLOYEE_ASSIGNMENTS -ErrorAction SilentlyContinue
-  }
-
-  Write-Host ("SERVER MODE: USE_IDENTITY_MAPPINGS={0} REQUIRE_IDENTITY_MAPPINGS={1} USE_EMPLOYEES_REGISTRY={2} USE_EMPLOYEE_ASSIGNMENTS={3}" -f `
-    $mode.use_identity_mappings, $mode.require_identity_mappings, $mode.use_employees_registry, $mode.use_employee_assignments)
-} catch {
-  Write-Host "FAIL: server mode check"
-  Write-Host "---- ERROR ----"
-  Write-Host "This test suite requires ALLOW_TEST_ENDPOINTS enabled (true/1)"
-  Write-Host "Base URL: $baseUrl"
-  exit 1
-}
 
 function Run-NodeTest {
   param(
@@ -53,6 +13,131 @@ function Run-NodeTest {
     exit 1
   }
 }
+
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
+function Get-ServerMode {
+  param([string]$baseUrl)
+  try {
+    return Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  } catch {
+    $script:ServerModeError = $_
+    return $null
+  }
+}
+
+function Assert-ServerMode {
+  param([string]$baseUrl)
+
+  $expectedUseSet = $false
+  $expectedRequireSet = $false
+  $expectedUse = $false
+  $expectedRequire = $false
+
+  if ($env:USE_IDENTITY_MAPPINGS) {
+    $expectedUseSet = $true
+    $expectedUse = To-Bool $env:USE_IDENTITY_MAPPINGS
+  }
+  if ($env:REQUIRE_IDENTITY_MAPPINGS) {
+    $expectedRequireSet = $true
+    $expectedRequire = To-Bool $env:REQUIRE_IDENTITY_MAPPINGS
+  }
+  $expectedPolicy = if ($env:IDENTITY_MAPPING_POLICY) { $env:IDENTITY_MAPPING_POLICY } else { 'all' }
+  $expectedPolicy = $expectedPolicy.ToString().Trim().ToLower()
+
+  $mode = Get-ServerMode $baseUrl
+  if (-not $mode) {
+    Write-Host "FAIL: server mode check"
+    Write-Host "---- ERROR ----"
+    Write-Host "Failed to fetch server mode. Is the server running?"
+    if ($script:ServerModeError -and $script:ServerModeError.Exception -and $script:ServerModeError.Exception.Message) {
+      Write-Host ("Details: {0}" -f $script:ServerModeError.Exception.Message)
+    }
+    Write-Host "Base URL: $baseUrl"
+    Write-Host "Hint: start with .\\scripts\\run-test-server.ps1"
+    exit 1
+  }
+
+  Write-Host 'SERVER MODE (raw):'
+  $mode | ConvertTo-Json -Depth 6
+
+  if (-not $mode.allow_test_endpoints) {
+    Write-Host "FAIL: server mode check"
+    Write-Host "---- ERROR ----"
+    Write-Host "This test suite requires ALLOW_TEST_ENDPOINTS enabled (true/1)"
+    Write-Host "Base URL: $baseUrl"
+    exit 1
+  }
+
+  if ($env:ZKTECO_CHECKTYPE_MAP) {
+    Write-Host "WARN: ZKTECO_CHECKTYPE_MAP is set here, but server env is captured at startup. Restart server with .\\scripts\\run-test-server.ps1 (Base URL: $baseUrl)."
+  }
+
+  $actualUse = To-Bool $mode.use_identity_mappings
+  $actualRequire = To-Bool $mode.require_identity_mappings
+  $actualPolicy = if ($mode.identity_mapping_policy) { $mode.identity_mapping_policy } else { '' }
+  $actualPolicy = $actualPolicy.ToString().Trim().ToLower()
+
+  $mismatches = @()
+  if ($expectedUseSet -and $expectedUse -ne $actualUse) {
+    $mismatches += "use_identity_mappings expected=$expectedUse actual=$actualUse"
+  }
+  if ($expectedRequireSet -and $expectedRequire -ne $actualRequire) {
+    $mismatches += "require_identity_mappings expected=$expectedRequire actual=$actualRequire"
+  }
+  if ($expectedPolicy -ne $actualPolicy) {
+    $mismatches += "identity_mapping_policy expected=$expectedPolicy actual=$actualPolicy"
+  }
+
+  if ($mismatches.Count -gt 0) {
+    if (To-Bool $env:ALLOW_SERVER_MODE_MISMATCH) {
+      Write-Host "WARN: server mode mismatch (ALLOW_SERVER_MODE_MISMATCH enabled)"
+      $mismatches | ForEach-Object { Write-Host $_ }
+    } else {
+      Write-Host "FAIL: server mode mismatch"
+      $mismatches | ForEach-Object { Write-Host $_ }
+      Write-Host "Hint: restart server with .\\scripts\\run-test-server.ps1"
+      exit 1
+    }
+  }
+
+  return $mode
+}
+
+$mode = Assert-ServerMode $baseUrl
+
+if ($mode.use_identity_mappings) {
+  $env:USE_IDENTITY_MAPPINGS = '1'
+} else {
+  Remove-Item Env:USE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
+}
+if ($mode.require_identity_mappings) {
+  $env:REQUIRE_IDENTITY_MAPPINGS = '1'
+} else {
+  Remove-Item Env:REQUIRE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
+}
+if ($mode.use_employees_registry) {
+  $env:USE_EMPLOYEES_REGISTRY = '1'
+} else {
+  Remove-Item Env:USE_EMPLOYEES_REGISTRY -ErrorAction SilentlyContinue
+}
+if ($mode.use_employee_assignments) {
+  $env:USE_EMPLOYEE_ASSIGNMENTS = '1'
+} else {
+  Remove-Item Env:USE_EMPLOYEE_ASSIGNMENTS -ErrorAction SilentlyContinue
+}
+
+Write-Host ("SERVER MODE: USE_IDENTITY_MAPPINGS={0} REQUIRE_IDENTITY_MAPPINGS={1} USE_EMPLOYEES_REGISTRY={2} USE_EMPLOYEE_ASSIGNMENTS={3}" -f `
+  $mode.use_identity_mappings, $mode.require_identity_mappings, $mode.use_employees_registry, $mode.use_employee_assignments)
 
 $scriptList = @(
   'ops\health.ps1',
@@ -112,6 +197,10 @@ if ($mode.use_employee_assignments) {
 
 Run-NodeTest 'services\identityMappingPolicy.test.js'
 Run-NodeTest 'api\opsTest.allowTestEndpoints.test.js'
+if (-not $env:ZKTECO_CHECKTYPE_MAP) {
+  Write-Host 'INFO: setting ZKTECO_CHECKTYPE_MAP for tests'
+  $env:ZKTECO_CHECKTYPE_MAP = '{"I":"IN","O":"OUT","0":"IN","1":"OUT"}'
+}
 Run-NodeTest 'contracts\previewOutput.contract.test.js'
 Run-NodeTest 'contracts\openapi.lint.test.js'
 Run-NodeTest 'contracts\openapi.coverage.test.js'
