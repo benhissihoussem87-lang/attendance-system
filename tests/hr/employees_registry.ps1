@@ -135,8 +135,14 @@ try {
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.error -ne 'conflict') {
-      throw ("expected conflict error, got {0}" -f $info.json.error)
+    if ($info.json.code -ne 'CONFLICT') {
+      throw ("expected CONFLICT code, got {0}" -f $info.json.code)
+    }
+    if (-not $info.json.details -or $info.json.details.kind -ne 'conflict') {
+      throw 'expected details.kind=conflict'
+    }
+    if ($info.json.details.error -ne 'employee_code_conflict') {
+      throw ("expected employee_code_conflict, got {0}" -f $info.json.details.error)
     }
   }
 
@@ -157,8 +163,14 @@ try {
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.error -ne 'invalid_request') {
-      throw ("expected invalid_request, got {0}" -f $info.json.error)
+    if ($info.json.code -ne 'VALIDATION_ERROR') {
+      throw ("expected VALIDATION_ERROR, got {0}" -f $info.json.code)
+    }
+    if (-not $info.json.details -or $info.json.details.kind -ne 'validation') {
+      throw 'expected details.kind=validation'
+    }
+    if ($info.json.details.error -ne 'invalid_request') {
+      throw ("expected invalid_request, got {0}" -f $info.json.details.error)
     }
   }
 

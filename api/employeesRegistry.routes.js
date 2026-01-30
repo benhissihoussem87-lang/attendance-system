@@ -7,6 +7,7 @@ const {
   getEmployee,
   upsertEmployee
 } = require('../services/employeesDb');
+const { sendError } = require('./lib/errorEnvelope');
 
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
@@ -51,7 +52,16 @@ router.get('/', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
 
@@ -75,7 +85,11 @@ router.get('/', async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'employees_registry_fetch_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
@@ -83,20 +97,41 @@ router.get('/:personId', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
     const personId = req.params.personId;
 
     const employee = await getEmployee(db, companyId, personId);
     if (!employee) {
-      return res.status(404).json({ error: 'employee_not_found' });
+      return sendError(res, {
+        status: 404,
+        code: 'LOOKUP_NOT_FOUND',
+        message: 'Employee not found',
+        details: {
+          kind: 'lookup_error',
+          error: 'employee_not_found'
+        }
+      });
     }
 
     return res.json(employee);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'employees_registry_fetch_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
@@ -105,25 +140,61 @@ router.put('/:personId', async (req, res) => {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
     const personId = req.params.personId;
 
     if (Object.prototype.hasOwnProperty.call(body, 'metadata') && !isPlainObject(body.metadata)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'metadata must be an object' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'metadata must be an object'
+        }
+      });
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'active')
       && body.active !== null
       && typeof body.active !== 'boolean') {
-      return res.status(400).json({ error: 'invalid_request', detail: 'active must be boolean' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'active must be boolean'
+        }
+      });
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'default_rule_set_id')
       && body.default_rule_set_id !== null
       && !isValidUuid(body.default_rule_set_id)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'default_rule_set_id must be a valid UUID' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'default_rule_set_id must be a valid UUID'
+        }
+      });
     }
 
     const exists = await db.query(`
@@ -132,17 +203,39 @@ router.put('/:personId', async (req, res) => {
       WHERE company_id = $1
     `, [companyId]);
     if (exists.rows.length === 0) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'company_id not found' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'company_id_not_found',
+          detail: 'company_id not found'
+        }
+      });
     }
 
     const saved = await upsertEmployee(db, companyId, personId, body);
     return res.json(saved);
   } catch (err) {
     if (err && err.code === '23505') {
-      return res.status(409).json({ error: 'conflict', detail: 'employee_code already exists' });
+      return sendError(res, {
+        status: 409,
+        code: 'CONFLICT',
+        message: 'Conflict',
+        details: {
+          kind: 'conflict',
+          error: 'employee_code_conflict',
+          detail: 'employee_code already exists'
+        }
+      });
     }
     console.error(err);
-    return res.status(500).json({ error: 'employees_registry_save_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 

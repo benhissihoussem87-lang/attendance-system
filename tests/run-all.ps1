@@ -206,6 +206,7 @@ Run-NodeTest 'contracts\openapi.lint.test.js'
 Run-NodeTest 'contracts\openapi.coverage.test.js'
 Run-NodeTest 'contracts\openapi.deviceRegistry.coverage.test.js'
 Run-NodeTest 'contracts\devicesRegistry.contract.test.js'
+Run-NodeTest 'contracts\devices.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\deviceEvents.jsonIngest.errorEnvelope.contract.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'contracts\db.devicesTable.smoke.test.js'
@@ -213,6 +214,7 @@ if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Write-Host 'SKIP: db devices table smoke (PG env vars not set)'
 }
 Run-NodeTest 'contracts\employeesRegistry.contract.test.js'
+Run-NodeTest 'contracts\employeesRegistry.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\identityMappings.lookup.contract.test.js'
 Run-NodeTest 'device_events\identity_context_fallback_keys.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
