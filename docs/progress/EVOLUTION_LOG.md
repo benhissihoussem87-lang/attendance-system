@@ -9,6 +9,7 @@
 - Made OpenAPI coverage robust to Windows CRLF.
 - Added OpenAPI endpoint inventory generator and report artifacts.
 - Ignored the generated endpoint inventory JSON to avoid timestamp-only churn; documented inventory/report expectations.
+- Rolling out ErrorEnvelope gradually; 4xx errors require details.kind and endpoints migrate one-by-one.
 
 ## 2026-01-29
 

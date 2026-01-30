@@ -55,6 +55,17 @@ function getBaseUrl() {
   return process.env.BASE_URL || 'http://localhost:3000';
 }
 
+function ensureString(value, label) {
+  assert.strictEqual(typeof value, 'string', `${label} must be string`);
+}
+
+function assertErrorEnvelope(body) {
+  assert.ok(body && typeof body === 'object', 'error body is required');
+  ensureString(body.error, 'error.error');
+  ensureString(body.code, 'error.code');
+  ensureString(body.message, 'error.message');
+}
+
 async function fetchMode(baseUrl) {
   const res = await requestJson({
     method: 'GET',
@@ -121,17 +132,29 @@ async function run() {
   assert.ok(lookupRes.body && typeof lookupRes.body === 'object', 'lookup should return a body');
   assert.strictEqual(lookupRes.body.person_id, personId, 'lookup should return matching person_id');
 
+  const missingParamsRes = await requestJson({
+    method: 'GET',
+    url: `${baseUrl}/api/identity-mappings/lookup?company_id=DEFAULT`
+  });
+  assert.strictEqual(missingParamsRes.status, 400, 'missing params should return 400');
+  assertErrorEnvelope(missingParamsRes.body);
+  assert.strictEqual(missingParamsRes.body.code, 'VALIDATION_ERROR', 'missing params code mismatch');
+  assert.ok(
+    missingParamsRes.body.details && missingParamsRes.body.details.kind === 'validation',
+    'missing params details.kind should be validation'
+  );
+
   const missingValue = `ZK-UNKNOWN-${runId}`;
   const missingRes = await requestJson({
     method: 'GET',
     url: `${baseUrl}/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=${encodeURIComponent(missingValue)}`
   });
   assert.strictEqual(missingRes.status, 404, 'missing lookup should return 404');
-  assert.ok(missingRes.body && typeof missingRes.body === 'object', 'missing lookup should return a body');
-  assert.strictEqual(
-    missingRes.body.error,
-    'identity_mapping_not_found',
-    'missing lookup should return identity_mapping_not_found'
+  assertErrorEnvelope(missingRes.body);
+  assert.strictEqual(missingRes.body.code, 'LOOKUP_NOT_FOUND', 'missing lookup code mismatch');
+  assert.ok(
+    missingRes.body.details && missingRes.body.details.kind === 'lookup_error',
+    'missing lookup details.kind should be lookup_error'
   );
 
   console.log('identity mappings lookup contract tests passed');

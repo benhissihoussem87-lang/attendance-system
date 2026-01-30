@@ -7,6 +7,7 @@ const {
   getIdentityMapping,
   upsertIdentityMapping
 } = require('../services/identityMappingsDb');
+const { sendError } = require('./lib/errorEnvelope');
 
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
@@ -94,7 +95,16 @@ router.get('/lookup', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
 
@@ -103,15 +113,29 @@ router.get('/lookup', async (req, res) => {
     const identifierValue = typeof req.query.identifier_value === 'string' ? req.query.identifier_value.trim() : '';
 
     if (!provider || !identifierType || !identifierValue) {
-      return res.status(400).json({
-        error: 'invalid_request',
-        detail: 'provider, identifier_type, identifier_value are required'
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'provider, identifier_type, identifier_value are required'
+        }
       });
     }
 
     const mapping = await getIdentityMapping(db, companyId, provider, identifierType, identifierValue);
     if (!mapping || mapping.active === false) {
-      return res.status(404).json({ error: 'identity_mapping_not_found' });
+      return sendError(res, {
+        status: 404,
+        code: 'LOOKUP_NOT_FOUND',
+        message: 'Identity mapping not found',
+        details: {
+          kind: 'lookup_error',
+          error: 'identity_mapping_not_found'
+        }
+      });
     }
 
     return res.json({
@@ -123,7 +147,11 @@ router.get('/lookup', async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'identity_mappings_lookup_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
