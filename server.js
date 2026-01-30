@@ -35,6 +35,7 @@ app.use('/api', require('./api/resolutions.routes'));
 app.use('/api/simulate', require('./api/simulate.routes'));
 app.use('/api/simulation', require('./api/simulation.routes'));
 app.use('/api/device-events', require('./api/deviceEvents.routes'));
+app.use('/api/devices', require('./api/devices.routes'));
 app.use('/api/ops', require('./api/ops.routes'));
 if (toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
   app.use('/api/ops/test', require('./api/opsTest.routes'));

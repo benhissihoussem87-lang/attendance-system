@@ -24,6 +24,7 @@
   - `tests/contracts/openapi.coverage.test.js`
   - `docs/adr/ADR-openapi-skeleton.md`
   - `docs/adr/ADR-contract-driven-openapi.md`
+- Added Device Registry contract-first skeleton (ADR, OpenAPI paths/schemas, offline coverage test).
 - Tuned Spectral rules to reduce warning noise while keeping drift checks (operation IDs, unused components).
 
 ### Invariants confirmed/added

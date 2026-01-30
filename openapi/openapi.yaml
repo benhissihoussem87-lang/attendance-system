@@ -7,6 +7,7 @@ servers:
 tags:
   - name: ops
   - name: device-events
+  - name: device-registry
   - name: identity-mappings
   - name: employees-registry
 paths:
@@ -69,6 +70,89 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreviewResponse"
+  /api/devices:
+    get:
+      tags: [device-registry]
+      operationId: listDevices
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: provider
+          schema:
+            type: string
+        - in: query
+          name: device_uid
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevicesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/devices/{device_uid}:
+    get:
+      tags: [device-registry]
+      operationId: getDevice
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags: [device-registry]
+      operationId: upsertDevice
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/identity-mappings:
     get:
       tags: [identity-mappings]
@@ -307,6 +391,12 @@ components:
         enum:
           - "true"
           - "false"
+    device_uid:
+      name: device_uid
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     ModeResponse:
       type: object
@@ -408,6 +498,48 @@ components:
               type: string
             device_uid:
               type: string
+    DeviceUpsertRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+        device_name:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+    Device:
+      type: object
+      properties:
+        company_id:
+          type: string
+        device_uid:
+          type: string
+        provider:
+          type: string
+        device_name:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    DevicesListResponse:
+      type: object
+      required:
+        - value
+        - Count
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        Count:
+          type: integer
     IdentityMappingUpsertRequest:
       type: object
       required:

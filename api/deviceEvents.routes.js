@@ -23,6 +23,7 @@ const {
   CSV_IMPORT_VERSION,
   CSV_CONTRACT
 } = require('../contracts/systemContracts');
+const { upsertDeviceMinimal } = require('../services/devicesDb');
 const {
   getIdentityContext: getAdapterIdentityContext,
   getSupportedVendors
@@ -183,6 +184,15 @@ router.post('/', async (req, res) => {
         });
       }
     }
+
+    const autoMetadata = { source: 'ingest' };
+    if (providerValue) {
+      autoMetadata.vendor = providerValue;
+    }
+    await upsertDeviceMinimal(db, companyId, sanitizedDeviceUid, {
+      provider: providerValue || null,
+      metadata: autoMetadata
+    });
 
     const insertResult = await db.query(
       `
@@ -556,6 +566,18 @@ router.post(
         }
 
         const companyId = normalized.company_id || 'DEFAULT';
+        const normalizedVendor = typeof normalized.vendor === 'string' ? normalized.vendor.trim() : '';
+        const autoVendor = normalizedVendor
+          ? normalizedVendor.toLowerCase()
+          : (typeof vendor === 'string' && vendor.trim() ? vendor.trim().toLowerCase() : null);
+        const autoMetadata = { source: 'ingest' };
+        if (autoVendor) {
+          autoMetadata.vendor = autoVendor;
+        }
+        await upsertDeviceMinimal(db, companyId, normalized.device_uid, {
+          provider: autoVendor,
+          metadata: autoMetadata
+        });
         const values = [
           companyId,
           normalized.person_id,
@@ -761,6 +783,18 @@ router.post(
       }
 
       const companyId = canonical.company_id || 'DEFAULT';
+      const canonicalVendor = typeof canonical.vendor === 'string' ? canonical.vendor.trim() : '';
+      const autoVendor = canonicalVendor
+        ? canonicalVendor.toLowerCase()
+        : (typeof vendor === 'string' && vendor.trim() ? vendor.trim().toLowerCase() : null);
+      const autoMetadata = { source: 'ingest' };
+      if (autoVendor) {
+        autoMetadata.vendor = autoVendor;
+      }
+      await upsertDeviceMinimal(db, companyId, canonical.device_uid, {
+        provider: autoVendor,
+        metadata: autoMetadata
+      });
       const values = [
         companyId,
         canonical.person_id,
