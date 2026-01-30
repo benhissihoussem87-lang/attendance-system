@@ -7,6 +7,7 @@ const {
   getDevice,
   upsertDevice
 } = require('../services/devicesDb');
+const { sendError } = require('./lib/errorEnvelope');
 
 function resolveCompanyId(req, body) {
   const bodyId = body && typeof body.company_id === 'string' ? body.company_id : null;
@@ -40,7 +41,16 @@ router.get('/', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
 
@@ -62,7 +72,11 @@ router.get('/', async (req, res) => {
     return res.json({ value: rows, Count: rows.length });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'devices_fetch_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
@@ -70,20 +84,41 @@ router.get('/:deviceUid', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
     const deviceUid = req.params.deviceUid;
 
     const device = await getDevice(db, companyId, deviceUid);
     if (!device) {
-      return res.status(404).json({ error: 'device_not_found' });
+      return sendError(res, {
+        status: 404,
+        code: 'LOOKUP_NOT_FOUND',
+        message: 'Device not found',
+        details: {
+          kind: 'lookup_error',
+          error: 'device_not_found'
+        }
+      });
     }
 
     return res.json(device);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'devices_fetch_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
@@ -92,7 +127,16 @@ router.put('/:deviceUid', async (req, res) => {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
     const deviceUid = req.params.deviceUid;
@@ -103,17 +147,39 @@ router.put('/:deviceUid', async (req, res) => {
       WHERE company_id = $1
     `, [companyId]);
     if (exists.rows.length === 0) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'company_id not found' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'company_id_not_found',
+          detail: 'company_id not found'
+        }
+      });
     }
 
     const saved = await upsertDevice(db, companyId, deviceUid, body);
     return res.json(saved);
   } catch (err) {
     if (err && err.code === 'invalid_request') {
-      return res.status(400).json({ error: 'invalid_request', detail: err.detail });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: err.detail
+        }
+      });
     }
     console.error(err);
-    return res.status(500).json({ error: 'devices_save_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
