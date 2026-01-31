@@ -297,6 +297,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IdentityMappingsListResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     put:
       tags: [identity-mappings]
       operationId: upsertIdentityMapping
@@ -321,13 +327,52 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid metadata format
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: metadata must be an object
+                employee_not_found:
+                  summary: Employee not found
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: employee_not_found
+                      detail: The specified person_id does not exist
         "409":
           description: Conflict (identifier already mapped)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConflictResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                conflict:
+                  summary: Identifier already mapped
+                  value:
+                    error: conflict
+                    code: CONFLICT
+                    message: Identity mapping conflict
+                    details:
+                      kind: conflict
+                      error: identifier_already_mapped
+                      detail: This identifier is already mapped to a different person
+                      existing_person_id: person_123
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/identity-mappings/lookup:
     get:
       tags: [identity-mappings]
@@ -1595,14 +1640,3 @@ components:
         message:
           type: string
         details: {}
-    ConflictResponse:
-      type: object
-      required:
-        - error
-      properties:
-        error:
-          type: string
-        detail:
-          type: string
-        existing_person_id:
-          type: string

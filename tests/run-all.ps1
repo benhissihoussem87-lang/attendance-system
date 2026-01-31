@@ -221,6 +221,7 @@ if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
 Run-NodeTest 'contracts\employeesRegistry.contract.test.js'
 Run-NodeTest 'contracts\employeesRegistry.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\identityMappings.lookup.contract.test.js'
+Run-NodeTest 'contracts\identityMappings.errorEnvelope.contract.test.js'
 Run-NodeTest 'device_events\identity_context_fallback_keys.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'device_events\device_autoregister_from_ingest.test.js'

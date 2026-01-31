@@ -55,7 +55,16 @@ router.get('/', async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
 
@@ -87,7 +96,11 @@ router.get('/', async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'identity_mappings_fetch_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
@@ -160,38 +173,93 @@ router.put('/', async (req, res) => {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
     if (resolved.error) {
-      return res.status(400).json({ error: 'invalid_request', detail: resolved.error });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: resolved.error
+        }
+      });
     }
     const companyId = resolved.value;
 
     if (Object.prototype.hasOwnProperty.call(body, 'metadata') && !isPlainObject(body.metadata)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'metadata must be an object' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'metadata must be an object'
+        }
+      });
     }
 
     if (Object.prototype.hasOwnProperty.call(body, 'active')
       && body.active !== null
       && typeof body.active !== 'boolean') {
-      return res.status(400).json({ error: 'invalid_request', detail: 'active must be boolean' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'active must be boolean'
+        }
+      });
     }
 
     const saved = await upsertIdentityMapping(db, companyId, body);
     return res.json(saved);
   } catch (err) {
     if (err && err.code === 'employee_not_found') {
-      return res.status(400).json({ error: 'invalid_request', detail: 'employee_not_found' });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'employee_not_found',
+          detail: 'The specified person_id does not exist'
+        }
+      });
     }
     if (err && err.code === 'conflict_mapped_to_other_person') {
-      return res.status(409).json({
-        error: 'conflict',
-        detail: 'identifier already mapped',
-        existing_person_id: err.existing_person_id
+      return sendError(res, {
+        status: 409,
+        code: 'CONFLICT',
+        message: 'Identity mapping conflict',
+        details: {
+          kind: 'conflict',
+          error: 'identifier_already_mapped',
+          detail: 'This identifier is already mapped to a different person',
+          existing_person_id: err.existing_person_id
+        }
       });
     }
     if (err && err.code === 'invalid_request') {
-      return res.status(400).json({ error: 'invalid_request', detail: err.detail });
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: err.detail
+        }
+      });
     }
     console.error(err);
-    return res.status(500).json({ error: 'identity_mappings_save_failed' });
+    return sendError(res, {
+      status: 500,
+      code: 'INTERNAL_ERROR',
+      message: 'Server error'
+    });
   }
 });
 
