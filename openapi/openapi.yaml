@@ -1133,6 +1133,36 @@ paths:
       responses:
         "200":
           description: Simulation result
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
   /api/simulate/range:
     post:
       tags: [simulation]
