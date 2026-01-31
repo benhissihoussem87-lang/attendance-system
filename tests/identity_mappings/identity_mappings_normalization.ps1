@@ -205,7 +205,7 @@ try {
     Write-Host $resp3.text
     exit 1
   }
-  if (-not $resp3.json -or -not $resp3.json.existing_person_id -or $resp3.json.existing_person_id -ne $personA) {
+  if (-not $resp3.json -or -not $resp3.json.details -or $resp3.json.details.existing_person_id -ne $personA) {
     Write-Host "FAIL: mapping upsert #3 missing existing_person_id=$personA"
     Write-Host $resp3.text
     exit 1
