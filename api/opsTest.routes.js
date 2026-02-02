@@ -3,6 +3,7 @@ const router = express.Router();
 
 const db = require('../db');
 const { toBool } = require('../services/envBool');
+const { sendError } = require('./lib/errorEnvelope');
 
 async function getColumnSet(tableName) {
   const res = await db.query(
@@ -210,9 +211,38 @@ router.post('/reset', async (req, res) => {
   }
 });
 
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
+}
+
 router.post('/seed-leave', async (req, res) => {
   if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
-    return res.status(404).json({ error: 'Not found' });
+    return sendError(res, {
+      status: 404,
+      code: 'LOOKUP_NOT_FOUND',
+      message: 'Not found',
+      details: {
+        kind: 'lookup_error',
+        error: 'not_found'
+      }
+    });
   }
 
   const {
@@ -224,11 +254,11 @@ router.post('/seed-leave', async (req, res) => {
   } = req.body || {};
 
   if (!person_id || typeof person_id !== 'string' || !person_id.trim()) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+    return sendValidationError(res, 'person_id_required', 'person_id is required');
   }
 
   if (!isValidDateString(date)) {
-    return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
+    return sendValidationError(res, 'date_invalid', 'date must be YYYY-MM-DD');
   }
 
   const personId = person_id.trim();
@@ -322,11 +352,7 @@ router.post('/seed-leave', async (req, res) => {
     } catch (rollbackErr) {
       console.error('SEED LEAVE FAILED:', rollbackErr);
     }
-    return res.status(500).json({
-      error: 'seed_leave_failed',
-      code: err.code,
-      detail: err.message
-    });
+    return sendInternalError(res);
   }
 });
 

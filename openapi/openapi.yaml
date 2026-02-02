@@ -920,12 +920,62 @@ paths:
       responses:
         "200":
           description: Seeded leave
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                person_id_required:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+                date_invalid:
+                  summary: Invalid date format
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: date_invalid
+                      detail: date must be YYYY-MM-DD
         "404":
           description: Not found (test endpoints disabled)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_found:
+                  summary: Test endpoints disabled
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Not found
+                    details:
+                      kind: lookup_error
+                      error: not_found
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
   /api/ops/test/seed-nonworking:
     post:
       tags: [ops]
