@@ -6,9 +6,31 @@ const {
   listPolicyProfiles,
   createPolicyProfile
 } = require('../services/policy/policyProfileProvider');
+const { sendError } = require('./lib/errorEnvelope');
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
+function sendInternalError(res) {
+  return sendError(res, {
+    status: 500,
+    code: 'INTERNAL_ERROR',
+    message: 'Server error'
+  });
 }
 
 router.get('/', async (req, res) => {
@@ -20,7 +42,7 @@ router.get('/', async (req, res) => {
     return res.json(rows);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'policy_profiles_list_failed' });
+    return sendInternalError(res);
   }
 });
 
@@ -29,13 +51,13 @@ router.post('/', async (req, res) => {
     const { company_id, name, params } = req.body || {};
 
     if (!isNonEmptyString(company_id)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'company_id is required' });
+      return sendValidationError(res, 'company_id_required', 'company_id is required');
     }
     if (!isNonEmptyString(name)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'name is required' });
+      return sendValidationError(res, 'name_required', 'name is required');
     }
     if (params !== undefined && (params === null || typeof params !== 'object' || Array.isArray(params))) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'params must be an object' });
+      return sendValidationError(res, 'params_invalid', 'params must be an object');
     }
 
     const result = await createPolicyProfile(db, {
@@ -47,7 +69,7 @@ router.post('/', async (req, res) => {
     return res.status(201).json(result);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'policy_profiles_create_failed' });
+    return sendInternalError(res);
   }
 });
 

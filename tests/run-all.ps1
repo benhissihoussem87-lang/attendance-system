@@ -212,6 +212,8 @@ Run-NodeTest 'contracts\employeeAssignments.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\attendance.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\resolutions.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\simulateDay.errorEnvelope.contract.test.js'
+Run-NodeTest 'contracts\simulateRange.errorEnvelope.contract.test.js'
+Run-NodeTest 'contracts\policyProfiles.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\deviceEvents.jsonIngest.errorEnvelope.contract.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'contracts\db.devicesTable.smoke.test.js'

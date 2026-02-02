@@ -428,40 +428,44 @@ router.post('/range', async (req, res) => {
     } = req.body || {};
 
     if (!person_id) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'person_id is required' });
+      return sendValidationError(res, 'person_id_required', 'person_id is required');
     }
     if (!isValidDateString(start_date) || !isValidDateString(end_date)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'start_date and end_date must be YYYY-MM-DD' });
+      return sendValidationError(res, 'date_invalid', 'start_date and end_date must be YYYY-MM-DD');
     }
     if (rule_set_id && !isValidUuid(rule_set_id)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id must be a UUID' });
+      return sendValidationError(res, 'rule_set_id_invalid', 'rule_set_id must be a UUID');
     }
     if (policy_profile_id && !isValidUuid(policy_profile_id)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'policy_profile_id must be a UUID' });
+      return sendValidationError(res, 'policy_profile_id_invalid', 'policy_profile_id must be a UUID');
     }
     if (policy_override !== undefined && !isPlainObject(policy_override)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'policy_override must be an object' });
+      return sendValidationError(res, 'policy_override_invalid', 'policy_override must be an object');
     }
     if (rule_set_override !== undefined && !isPlainObject(rule_set_override)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_override must be an object' });
+      return sendValidationError(res, 'rule_set_override_invalid', 'rule_set_override must be an object');
     }
     if (rule_set_override && rule_set_override.late_threshold_minutes !== undefined &&
       !isFiniteNonNegativeNumber(rule_set_override.late_threshold_minutes)) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'late_threshold_minutes must be a non-negative number' });
+      return sendValidationError(
+        res,
+        'late_threshold_minutes_invalid',
+        'late_threshold_minutes must be a non-negative number'
+      );
     }
 
     const startMs = parseDate(start_date).getTime();
     const endMs = parseDate(end_date).getTime();
     if (startMs > endMs) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'start_date must be <= end_date' });
+      return sendValidationError(res, 'date_range_invalid', 'start_date must be <= end_date');
     }
 
     const dateList = enumerateDates(start_date, end_date);
     if (dateList.length === 0) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'invalid date range' });
+      return sendValidationError(res, 'date_range_invalid', 'invalid date range');
     }
     if (dateList.length > 62) {
-      return res.status(400).json({ error: 'invalid_request', detail: 'date range too large' });
+      return sendValidationError(res, 'date_range_too_large', 'date range too large');
     }
 
     const companyId = company_id || 'DEFAULT';
@@ -482,7 +486,7 @@ router.post('/range', async (req, res) => {
       ruleSetSelection = resolved.meta;
     } catch (err) {
       if (err.code === 'RULE_SET_NOT_FOUND') {
-        return res.status(400).json({ error: 'invalid_request', detail: 'rule_set_id not found' });
+        return sendValidationError(res, 'rule_set_id_not_found', 'rule_set_id not found');
       }
       throw err;
     }
@@ -491,10 +495,14 @@ router.post('/range', async (req, res) => {
     if (policy_profile_id) {
       const foundProfile = await getPolicyProfileById(db, policy_profile_id);
       if (!foundProfile) {
-        return res.status(400).json({ error: 'invalid_request', detail: 'policy_profile_id not found' });
+        return sendValidationError(res, 'policy_profile_id_not_found', 'policy_profile_id not found');
       }
       if (foundProfile.company_id !== companyId) {
-        return res.status(400).json({ error: 'invalid_request', detail: 'policy_profile_id does not belong to company' });
+        return sendValidationError(
+          res,
+          'policy_profile_id_company_mismatch',
+          'policy_profile_id does not belong to company'
+        );
       }
       policyProfile = foundProfile;
     } else {
@@ -646,7 +654,7 @@ router.post('/range', async (req, res) => {
     return res.json(records);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: 'simulation_failed' });
+    return sendInternalError(res);
   }
 });
 
