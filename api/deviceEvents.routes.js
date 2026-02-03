@@ -239,6 +239,15 @@ router.post('/', async (req, res) => {
       metadata: autoMetadata
     });
 
+    if (parsedPayload === null || parsedPayload === undefined) {
+      parsedPayload = (raw_payload !== null && raw_payload !== undefined)
+        ? raw_payload
+        : (req.body || {});
+      if (parsedPayload === null || parsedPayload === undefined) {
+        parsedPayload = {};
+      }
+    }
+
     const insertResult = await db.query(
       `
       INSERT INTO device_events
