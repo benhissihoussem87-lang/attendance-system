@@ -1,0 +1,58 @@
+name: Feature Request
+description: Propose a change with clear outcomes and scope.
+title: ""
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are we solving, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the preferred approach.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria / Definition of Done
+      description: Checklist encouraged.
+      placeholder: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope boundaries
+      description: What is explicitly out of scope?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / references
+      description: Links to ADRs, docs, or relevant issues.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional alternatives and tradeoffs.
+    validations:
+      required: false
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks / rollout
+      description: Optional risks, migration, or rollout plan.
+    validations:
+      required: false
