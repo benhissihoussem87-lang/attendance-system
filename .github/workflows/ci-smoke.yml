@@ -75,17 +75,20 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "PWD: $(Get-Location)"
-          if (Test-Path .\tests) { Get-ChildItem .\tests } else { Write-Host "tests/ missing" }
-          if (Test-Path .\tests\.tmp) {
+          if (Test-Path ./tests) { Get-ChildItem ./tests } else { Write-Host "tests/ missing" }
+
+          if (Test-Path ./tests/.tmp) {
             Write-Host "tests/.tmp contents:"
-            Get-ChildItem .\tests\.tmp
-            if (Test-Path .\tests\.tmp\run-suite-server.out.log) {
+            Get-ChildItem ./tests/.tmp
+
+            if (Test-Path ./tests/.tmp/run-suite-server.out.log) {
               Write-Host '---- run-suite-server.out.log (tail) ----'
-              Get-Content -Path .\tests\.tmp\run-suite-server.out.log -Tail 200 | ForEach-Object { Write-Host $_ }
+              Get-Content -Path ./tests/.tmp/run-suite-server.out.log -Tail 200 | ForEach-Object { Write-Host $_ }
             }
-            if (Test-Path .\tests\.tmp\run-suite-server.err.log) {
+
+            if (Test-Path ./tests/.tmp/run-suite-server.err.log) {
               Write-Host '---- run-suite-server.err.log (tail) ----'
-              Get-Content -Path .\tests\.tmp\run-suite-server.err.log -Tail 200 | ForEach-Object { Write-Host $_ }
+              Get-Content -Path ./tests/.tmp/run-suite-server.err.log -Tail 200 | ForEach-Object { Write-Host $_ }
             }
           } else {
             Write-Host "tests/.tmp missing"
