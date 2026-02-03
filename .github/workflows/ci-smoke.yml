@@ -13,6 +13,12 @@ on:
 jobs:
   linux-smoke:
     runs-on: ubuntu-latest
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: attendance
     services:
       postgres:
         image: postgres:16
@@ -57,12 +63,6 @@ jobs:
         run: pwsh -NoProfile -File ./scripts/db/apply-migrations.ps1
       - name: Run Suite
         shell: pwsh
-        env:
-          PGHOST: localhost
-          PGPORT: 5432
-          PGUSER: postgres
-          PGPASSWORD: postgres
-          PGDATABASE: attendance
         run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
       - name: Upload Logs (on failure)
         if: failure()
