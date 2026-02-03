@@ -5,6 +5,7 @@ param(
   [string]$IdentityMappingPolicy = 'vendor',
   [string]$ChecktypeMap = '{"I":"IN","O":"OUT","0":"IN","1":"OUT"}',
   [switch]$NoServer,
+  [switch]$UseExistingServer,
   [int]$ServerStartTimeoutSeconds = 60
 )
 
@@ -86,6 +87,18 @@ function Wait-ForPort([string]$hostName, [int]$portNumber, [int]$timeoutSeconds,
   Fail-Step 'server_ready' ('Server not ready at ' + $hostName + ':' + $portNumber + '. Logs: ' + $outPath + ' | ' + $errPath)
 }
 
+function Get-ServerModeWithRetry([string]$baseUrl, [int]$timeoutSeconds) {
+  $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      return Invoke-RestMethod -Uri ($baseUrl + '/api/ops/test/mode') -TimeoutSec 5
+    } catch {
+      Start-Sleep -Seconds 1
+    }
+  }
+  return $null
+}
+
 try {
   Write-Section 'Prep'
 
@@ -156,23 +169,33 @@ try {
 
       Wait-ForPort $serverHost $ServerPort $ServerStartTimeoutSeconds $script:ServerStdoutLogPath $script:ServerStderrLogPath
     } else {
-      Write-Host 'Server already running, skip start'
+      if (-not $UseExistingServer) {
+        Write-Host 'RUN SUITE FAIL: existing server detected'
+        Write-Host ("Server already listening on port {0}. Env capture is non-deterministic." -f $ServerPort)
+        Write-Host ("Hint: Stop the existing server on port {0} and rerun: .\\tests\\run-suite.ps1" -f $ServerPort)
+        Write-Host 'Hint: Or rerun with -UseExistingServer to accept non-deterministic env capture'
+        exit 1
+      }
+      Write-Host 'WARN: Server already running; env capture is non-deterministic (ALLOW_TEST_ENDPOINTS, IDENTITY_MAPPING_POLICY, ZKTECO_CHECKTYPE_MAP).'
     }
 
     Write-Section 'Server Mode'
-    $modeDeadline = (Get-Date).AddSeconds(10)
-    $modeOk = $false
-    while ((Get-Date) -lt $modeDeadline) {
-      try {
-        Invoke-RestMethod -Uri ($BaseUrl + '/api/ops/test/mode') -TimeoutSec 5 | Out-Null
-        $modeOk = $true
-        break
-      } catch {
-        Start-Sleep -Seconds 1
-      }
-    }
-    if ($modeOk) {
+    $mode = Get-ServerModeWithRetry $BaseUrl 10
+    if ($mode) {
       Write-Host 'Server mode endpoint OK'
+      if ($isListening) {
+        $policy = if ($mode.identity_mapping_policy) { $mode.identity_mapping_policy } else { '' }
+        $policy = $policy.ToString().Trim().ToLower()
+        $expectedPolicy = $IdentityMappingPolicy.ToString().Trim().ToLower()
+        if (-not $mode.allow_test_endpoints -or $policy -ne $expectedPolicy) {
+          Write-Host 'RUN SUITE FAIL: server mode mismatch'
+          Write-Host ("allow_test_endpoints expected=true actual={0}" -f $mode.allow_test_endpoints)
+          Write-Host ("identity_mapping_policy expected={0} actual={1}" -f $expectedPolicy, $policy)
+          Write-Host 'Hint: Stop the existing server and rerun: .\tests\run-suite.ps1'
+          Write-Host 'Hint: Or start test-safe server: .\scripts\run-test-server.ps1'
+          exit 1
+        }
+      }
     } else {
       Write-ServerLogsTail $script:ServerStdoutLogPath $script:ServerStderrLogPath
       Fail-Step 'server_mode' 'Failed to fetch /api/ops/test/mode after retries. Is the test server running with ALLOW_TEST_ENDPOINTS=true?'
