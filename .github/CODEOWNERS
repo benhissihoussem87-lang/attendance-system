@@ -1,0 +1,10 @@
+# CODEOWNERS routes reviews for changes in these paths.
+
+* @benhissihoussem87-lang
+/.github/ @benhissihoussem87-lang
+/docs/ @benhissihoussem87-lang
+/migrations/ @benhissihoussem87-lang
+/scripts/db/ @benhissihoussem87-lang
+/tests/ @benhissihoussem87-lang
+/openapi/ @benhissihoussem87-lang
+/docs/openapi/ @benhissihoussem87-lang
