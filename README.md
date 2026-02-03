@@ -13,6 +13,39 @@ Required environment variables
 - PGPASSWORD (optional)
 - PORT (optional, default 3000)
 
+Local workflows
+
+Quickstart (development)
+- Install dependencies:
+  - `npm install`
+- Start the server:
+  - `npm start`
+- Note: some behavior depends on env captured at server startup. For test-safe runs, use `.\scripts\run-test-server.ps1`.
+
+DB smoke tests (Postgres-dependent tests)
+- These DB smoke tests are skipped unless PG env vars are set.
+- Details: `docs/db-tests.md`
+- Minimal setup and run:
+  - `Copy-Item .env.example .env`
+  - `. .\scripts\db\load-env.ps1`
+  - `.\tests\run-all.ps1`
+
+Full test suite (canonical)
+- `.\tests\run-all.ps1` is the canonical test runner.
+- Recommended local flow:
+  - `.\scripts\run-test-server.ps1`
+  - `.\tests\run-all.ps1`
+- If you change env vars affecting server mode (e.g., `ZKTECO_CHECKTYPE_MAP`), restart the server.
+- More details: `docs/TESTING.md`
+
+Advanced: one-shot bootstrap (smoke.ps1)
+- `.\smoke.ps1` is a local convenience helper (not the canonical CI entrypoint).
+- It drops/creates the DB (unless `-SkipDrop`), applies migrations, checks invariants, optionally auto-starts the server, then runs `.\tests\run-all.ps1` and cleans up env/server state.
+- Examples:
+  - `.\smoke.ps1`
+  - `.\smoke.ps1 -DbName attendance_tmp -SkipDrop`
+  - `.\smoke.ps1 -AutoStartServer:$false`
+
 PowerShell start
 - `$env:PGHOST="localhost"; $env:PGUSER="postgres"; $env:PGDATABASE="attendance"; node .\\server.js`
 - `npm start`
