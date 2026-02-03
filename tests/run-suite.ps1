@@ -14,6 +14,7 @@ if (-not $PSBoundParameters.ContainsKey('LoadEnv')) {
   $LoadEnv = $true
 }
 
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $script:StartedServer = $false
 $script:ServerProcess = $null
 $script:ServerStdoutLogPath = $null
@@ -89,7 +90,7 @@ try {
   Write-Section 'Prep'
 
   if ($LoadEnv) {
-    $envLoader = Join-Path $PSScriptRoot '..\scripts\db\load-env.ps1'
+    $envLoader = Join-Path $repoRoot 'scripts\db\load-env.ps1'
     if (Test-Path $envLoader) {
       Write-Host 'Loading PG env vars from .env'
       . $envLoader
@@ -139,14 +140,14 @@ try {
 
       try {
         $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
-          -WorkingDirectory (Join-Path $PSScriptRoot '..') `
+          -WorkingDirectory $repoRoot `
           -RedirectStandardOutput $script:ServerStdoutLogPath `
           -RedirectStandardError $script:ServerStderrLogPath `
           -NoNewWindow `
           -PassThru
       } catch {
         $script:ServerProcess = Start-Process -FilePath 'node' -ArgumentList 'server.js' `
-          -WorkingDirectory (Join-Path $PSScriptRoot '..') `
+          -WorkingDirectory $repoRoot `
           -RedirectStandardOutput $script:ServerStdoutLogPath `
           -RedirectStandardError $script:ServerStderrLogPath `
           -PassThru
@@ -159,12 +160,22 @@ try {
     }
 
     Write-Section 'Server Mode'
-    try {
-      Invoke-RestMethod -Uri ($BaseUrl + '/api/ops/test/mode') -TimeoutSec 5 | Out-Null
+    $modeDeadline = (Get-Date).AddSeconds(10)
+    $modeOk = $false
+    while ((Get-Date) -lt $modeDeadline) {
+      try {
+        Invoke-RestMethod -Uri ($BaseUrl + '/api/ops/test/mode') -TimeoutSec 5 | Out-Null
+        $modeOk = $true
+        break
+      } catch {
+        Start-Sleep -Seconds 1
+      }
+    }
+    if ($modeOk) {
       Write-Host 'Server mode endpoint OK'
-    } catch {
+    } else {
       Write-ServerLogsTail $script:ServerStdoutLogPath $script:ServerStderrLogPath
-      Fail-Step 'server_mode' 'Failed to fetch /api/ops/test/mode. Is the test server running with ALLOW_TEST_ENDPOINTS=true?'
+      Fail-Step 'server_mode' 'Failed to fetch /api/ops/test/mode after retries. Is the test server running with ALLOW_TEST_ENDPOINTS=true?'
     }
   }
 

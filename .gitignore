@@ -53,6 +53,7 @@ docs/openapi/endpoint-inventory.json
 # Local / temporary backups
 # =========================
 *backup*
+tests/.tmp/
 docs/full_zkt_tables.md
 tools/zkteco/*.csv
 tools/zkteco/*.mdb
