@@ -1,0 +1,1765 @@
+openapi: 3.1.0
+info:
+  title: Attendance System API
+  version: 0.1.0
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: ops
+  - name: device-events
+  - name: device-registry
+  - name: identity-mappings
+  - name: employees-registry
+  - name: attendance
+  - name: company-profile
+  - name: employee-assignments
+  - name: employees
+  - name: policy-profiles
+  - name: resolutions
+  - name: rule-sets
+  - name: simulation
+  - name: system
+paths:
+  /api/ops/health:
+    get:
+      tags: [ops]
+      operationId: getOpsHealth
+      responses:
+        "200":
+          description: Health check
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - system_version
+                  - uptime_seconds
+                properties:
+                  status:
+                    type: string
+                  system_version:
+                    type: string
+                  uptime_seconds:
+                    type: integer
+  /api/ops/ready:
+    get:
+      tags: [ops]
+      operationId: getOpsReady
+      responses:
+        "200":
+          description: Ready check
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - db
+                  - system_version
+                properties:
+                  status:
+                    type: string
+                  db:
+                    type: string
+                  system_version:
+                    type: string
+  /api/ops/test/mode:
+    get:
+      tags: [ops]
+      operationId: getOpsTestMode
+      responses:
+        "200":
+          description: Mode snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModeResponse"
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/device-events/import/preview:
+    post:
+      tags: [device-events]
+      operationId: previewDeviceEventsCsv
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: vendor
+          schema:
+            type: string
+        - in: header
+          name: x-vendor
+          schema:
+            type: string
+        - in: query
+          name: delimiter
+          schema:
+            type: string
+        - in: header
+          name: x-csv-delimiter
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Preview response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PreviewResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing/invalid company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: company_id is required
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/devices:
+    get:
+      tags: [device-registry]
+      operationId: listDevices
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: provider
+          schema:
+            type: string
+        - in: query
+          name: device_uid
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DevicesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/devices/{device_uid}:
+    get:
+      tags: [device-registry]
+      operationId: getDevice
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Device
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing/invalid company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: company_id is required
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                lookup_not_found:
+                  summary: Device not found
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Device not found
+                    details:
+                      kind: lookup_error
+                      error: device_not_found
+    put:
+      tags: [device-registry]
+      operationId: upsertDevice
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing/invalid company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: company_id is required
+                company_id_not_found:
+                  summary: company_id not found
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_not_found
+                      detail: company_id not found
+  /api/identity-mappings:
+    get:
+      tags: [identity-mappings]
+      operationId: listIdentityMappings
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - in: query
+          name: provider
+          schema:
+            type: string
+        - in: query
+          name: identifier_type
+          schema:
+            type: string
+        - in: query
+          name: identifier_value
+          schema:
+            type: string
+        - in: query
+          name: person_id
+          schema:
+            type: string
+        - $ref: "#/components/parameters/active_query"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Identity mappings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMappingsListResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      tags: [identity-mappings]
+      operationId: upsertIdentityMapping
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IdentityMappingUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMapping"
+        "400":
+          description: Invalid request (e.g., employee_not_found)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid metadata format
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: metadata must be an object
+                employee_not_found:
+                  summary: Employee not found
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: employee_not_found
+                      detail: The specified person_id does not exist
+        "409":
+          description: Conflict (identifier already mapped)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                conflict:
+                  summary: Identifier already mapped
+                  value:
+                    error: conflict
+                    code: CONFLICT
+                    message: Identity mapping conflict
+                    details:
+                      kind: conflict
+                      error: identifier_already_mapped
+                      detail: This identifier is already mapped to a different person
+                      existing_person_id: person_123
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/identity-mappings/lookup:
+    get:
+      tags: [identity-mappings]
+      operationId: lookupIdentityMapping
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - in: query
+          name: provider
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: identifier_type
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: identifier_value
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Identity mapping lookup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdentityMappingLookupResponse"
+        "400":
+          description: Invalid request (missing/invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing required query params
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: invalid_request
+                      detail: provider, identifier_type, identifier_value are required
+        "404":
+          description: Identity mapping not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                lookup_not_found:
+                  summary: Mapping missing or inactive
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Identity mapping not found
+                    details:
+                      kind: lookup_error
+                      error: identity_mapping_not_found
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/employees-registry:
+    get:
+      tags: [employees-registry]
+      operationId: listEmployeesRegistry
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+        - in: query
+          name: person_id
+          schema:
+            type: string
+        - in: query
+          name: employee_code
+          schema:
+            type: string
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Employees registry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid date format
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: date_invalid
+                      detail: date must be YYYY-MM-DD
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/employees-registry/{person_id}:
+    get:
+      tags: [employees-registry]
+      operationId: getEmployee
+      parameters:
+        - in: path
+          name: person_id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Employee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Employee not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      tags: [employees-registry]
+      operationId: upsertEmployee
+      parameters:
+        - in: path
+          name: person_id
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/attendance:
+    get:
+      tags: [attendance]
+      operationId: getAttendance
+      responses:
+        "200":
+          description: Attendance records
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/company-profile:
+    get:
+      tags: [company-profile]
+      operationId: getCompanyProfile
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Company profile
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Company id mismatch
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_mismatch
+                      detail: company_id mismatch between query and header
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_found:
+                  summary: Missing company profile
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Company profile not found
+                    details:
+                      kind: lookup_error
+                      error: company_profile_not_found
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+    put:
+      tags: [company-profile]
+      operationId: upsertCompanyProfile
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/x-company-id"
+      responses:
+        "200":
+          description: Upserted
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid metadata payload
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: metadata_invalid
+                      detail: metadata must be an object
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/device-events:
+    post:
+      tags: [device-events]
+      operationId: createDeviceEvent
+      responses:
+        "201":
+          description: Inserted
+        "200":
+          description: Deduplicated
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing required fields
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: missing_required_fields
+                      detail: Missing required fields
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/device-events/import/preview/export-errors.csv:
+    post:
+      tags: [device-events]
+      operationId: exportDeviceEventsPreviewErrors
+      responses:
+        "200":
+          description: Exported errors CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/device-events/import/commit:
+    post:
+      tags: [device-events]
+      operationId: commitDeviceEventsImport
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: vendor
+          schema:
+            type: string
+        - in: header
+          name: x-vendor
+          schema:
+            type: string
+        - in: query
+          name: delimiter
+          schema:
+            type: string
+        - in: header
+          name: x-csv-delimiter
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          text/plain:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Commit result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceEventsCommitResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/employee-assignments:
+    get:
+      tags: [employee-assignments]
+      operationId: listEmployeeAssignments
+      responses:
+        "200":
+          description: Employee assignments
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Company id mismatch
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_mismatch
+                      detail: company_id mismatch
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+    put:
+      tags: [employee-assignments]
+      operationId: upsertEmployeeAssignment
+      responses:
+        "200":
+          description: Upserted
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                conflict:
+                  summary: Overlapping assignment
+                  value:
+                    error: conflict
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: assignment_range_overlap
+                      detail: assignment range overlaps existing assignment
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/employees:
+    get:
+      tags: [employees]
+      operationId: listEmployees
+      responses:
+        "200":
+          description: Employees
+  /api/ops/test/attendance-days/count:
+    get:
+      tags: [ops]
+      operationId: getOpsTestAttendanceDaysCount
+      responses:
+        "200":
+          description: Attendance days count
+  /api/ops/test/reset:
+    post:
+      tags: [ops]
+      operationId: resetOpsTestData
+      responses:
+        "200":
+          description: Reset completed
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/ops/test/seed-leave:
+    post:
+      tags: [ops]
+      operationId: seedOpsTestLeave
+      responses:
+        "200":
+          description: Seeded leave
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                person_id_required:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+                date_invalid:
+                  summary: Invalid date format
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: date_invalid
+                      detail: date must be YYYY-MM-DD
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_found:
+                  summary: Test endpoints disabled
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Not found
+                    details:
+                      kind: lookup_error
+                      error: not_found
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/ops/test/seed-nonworking:
+    post:
+      tags: [ops]
+      operationId: seedOpsTestNonWorking
+      responses:
+        "200":
+          description: Seeded non-working days
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/ops/test/seed-ruleset:
+    post:
+      tags: [ops]
+      operationId: seedOpsTestRuleSet
+      responses:
+        "200":
+          description: Seeded ruleset
+        "404":
+          description: Not found (test endpoints disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/policy-profiles:
+    get:
+      tags: [policy-profiles]
+      operationId: listPolicyProfiles
+      responses:
+        "200":
+          description: Policy profiles
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+    post:
+      tags: [policy-profiles]
+      operationId: createPolicyProfile
+      responses:
+        "200":
+          description: Created
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_required
+                      detail: company_id is required
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/attendance/{attendance_day_id}/resolutions:
+    get:
+      tags: [resolutions]
+      operationId: listAttendanceResolutions
+      parameters:
+        - in: path
+          name: attendance_day_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Resolutions
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid attendance day id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: attendance_day_id_invalid
+                      detail: attendance_day_id must be a UUID
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+    post:
+      tags: [resolutions]
+      operationId: createAttendanceResolution
+      parameters:
+        - in: path
+          name: attendance_day_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Created
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Invalid attendance day id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: attendance_day_id_invalid
+                      detail: attendance_day_id must be a UUID
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/attendance/review-queue:
+    get:
+      tags: [resolutions]
+      operationId: listAttendanceReviewQueue
+      responses:
+        "200":
+          description: Review queue
+  /api/resolutions:
+    get:
+      tags: [resolutions]
+      operationId: listResolutions
+      responses:
+        "200":
+          description: Resolutions
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_found:
+                  summary: Attendance day not found
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Attendance day not found
+                    details:
+                      kind: lookup_error
+                      error: attendance_day_not_found
+                      detail: Call /api/attendance first to compute the day.
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+    post:
+      tags: [resolutions]
+      operationId: createResolution
+      responses:
+        "200":
+          description: Created
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing company_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: company_id_required
+                      detail: company_id is required
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_found:
+                  summary: Attendance day not found
+                  value:
+                    error: not_found
+                    code: LOOKUP_NOT_FOUND
+                    message: Attendance day not found
+                    details:
+                      kind: lookup_error
+                      error: attendance_day_not_found
+                      detail: Call /api/attendance first to compute the day.
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/rule-sets:
+    get:
+      tags: [rule-sets]
+      operationId: listRuleSets
+      responses:
+        "200":
+          description: Rule sets
+  /api/simulate/day:
+    post:
+      tags: [simulation]
+      operationId: simulateDay
+      responses:
+        "200":
+          description: Simulation result
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/simulate/range:
+    post:
+      tags: [simulation]
+      operationId: simulateRange
+      responses:
+        "200":
+          description: Simulation result
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_error:
+                  summary: Missing person_id
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: person_id_required
+                      detail: person_id is required
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                internal_error:
+                  summary: Unexpected server failure
+                  value:
+                    error: server_error
+                    code: INTERNAL_ERROR
+                    message: Server error
+  /api/simulation/run:
+    post:
+      tags: [simulation]
+      operationId: runSimulation
+      responses:
+        "200":
+          description: Simulation result
+  /api/system/health:
+    get:
+      tags: [system]
+      operationId: getSystemHealth
+      responses:
+        "200":
+          description: System health
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - engine
+                  - time
+                properties:
+                  status:
+                    type: string
+                  engine:
+                    type: string
+                  time:
+                    type: string
+components:
+  parameters:
+    company_id:
+      name: company_id
+      in: query
+      schema:
+        type: string
+        default: DEFAULT
+    x-company-id:
+      name: x-company-id
+      in: header
+      schema:
+        type: string
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        minimum: 1
+        maximum: 200
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+    active_query:
+      name: active
+      in: query
+      schema:
+        type: string
+        enum:
+          - "true"
+          - "false"
+    device_uid:
+      name: device_uid
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    ModeResponse:
+      type: object
+      required:
+        - allow_test_endpoints
+        - use_identity_mappings
+        - require_identity_mappings
+        - identity_mapping_policy
+        - use_employees_registry
+        - use_employee_assignments
+      properties:
+        allow_test_endpoints:
+          type: boolean
+        use_identity_mappings:
+          type: boolean
+        require_identity_mappings:
+          type: boolean
+        identity_mapping_policy:
+          type: string
+        use_employees_registry:
+          type: boolean
+        use_employee_assignments:
+          type: boolean
+    PreviewResponse:
+      type: object
+      required:
+        - system_version
+        - contract
+        - import_version
+        - total_rows
+        - valid_rows
+        - invalid_rows
+        - errors
+        - sample_valid_rows
+        - sample_rows
+      properties:
+        system_version:
+          type: string
+        contract:
+          type: string
+        import_version:
+          type: string
+        total_rows:
+          type: integer
+        valid_rows:
+          type: integer
+        invalid_rows:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewError"
+        sample_valid_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewSampleRow"
+        sample_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewSampleRow"
+        sample_invalid_rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewSampleRow"
+        error_intelligence:
+          type: object
+    DeviceEventsCommitResponse:
+      type: object
+      required:
+        - system_version
+        - contract
+        - import_version
+        - total_rows
+        - valid_rows
+        - invalid_rows
+        - inserted_rows
+        - skipped_rows
+        - failed_rows
+        - errors
+        - inserted_samples
+      properties:
+        system_version:
+          type: string
+        contract:
+          type: string
+        import_version:
+          type: string
+        total_rows:
+          type: integer
+        valid_rows:
+          type: integer
+        invalid_rows:
+          type: integer
+        inserted_rows:
+          type: integer
+        skipped_rows:
+          type: integer
+        failed_rows:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/PreviewError"
+        inserted_samples:
+          $ref: "#/components/schemas/DeviceEventsCommitInsertedSamples"
+    DeviceEventsCommitInsertedSamples:
+      type: object
+      required:
+        - first3
+        - last3
+      properties:
+        first3:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventsCommitInsertedSample"
+        last3:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventsCommitInsertedSample"
+    DeviceEventsCommitInsertedSample:
+      type: object
+      required:
+        - row_number
+        - person_id
+        - event_time_utc
+        - direction
+        - device_uid
+        - vendor
+      properties:
+        row_number:
+          type: integer
+        person_id:
+          type: string
+        event_time_utc:
+          type: string
+        direction:
+          type: string
+        device_uid:
+          type: string
+        vendor:
+          type: string
+    PreviewError:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        row_number:
+          type: integer
+    PreviewSampleRow:
+      type: object
+      required:
+        - row_number
+        - data
+      properties:
+        row_number:
+          type: integer
+        data:
+          type: object
+          properties:
+            resolved_person_id:
+              type: string
+            identity_mapping_applied:
+              type: boolean
+            identity_mapping_reason:
+              type: string
+            vendor:
+              type: string
+            provider:
+              type: string
+            device_uid:
+              type: string
+    DeviceUpsertRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+        device_name:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+    Device:
+      type: object
+      properties:
+        company_id:
+          type: string
+        device_uid:
+          type: string
+        provider:
+          type: string
+        device_name:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    DevicesListResponse:
+      type: object
+      required:
+        - value
+        - Count
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        Count:
+          type: integer
+    IdentityMappingUpsertRequest:
+      type: object
+      required:
+        - provider
+        - identifier_type
+        - identifier_value
+        - person_id
+      properties:
+        provider:
+          type: string
+        identifier_type:
+          type: string
+        identifier_value:
+          type: string
+        person_id:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+    IdentityMapping:
+      type: object
+      properties:
+        company_id:
+          type: string
+        provider:
+          type: string
+        identifier_type:
+          type: string
+        identifier_value:
+          type: string
+        person_id:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    IdentityMappingLookupResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        provider:
+          type: string
+        identifier_type:
+          type: string
+        identifier_value:
+          type: string
+        person_id:
+          type: string
+    IdentityMappingsListResponse:
+      type: object
+      required:
+        - value
+        - Count
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/IdentityMapping"
+        Count:
+          type: integer
+    EmployeeUpsertRequest:
+      type: object
+      properties:
+        employee_code:
+          type: string
+        full_name:
+          type: string
+        default_rule_set_id:
+          type: string
+          format: uuid
+        active:
+          type: boolean
+        metadata:
+          type: object
+    EmployeesListResponse:
+      type: object
+      required:
+        - value
+        - Count
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/Employee"
+        Count:
+          type: integer
+    Employee:
+      type: object
+      properties:
+        company_id:
+          type: string
+        person_id:
+          type: string
+        employee_code:
+          type: string
+        full_name:
+          type: string
+        default_rule_set_id:
+          type: string
+        active:
+          type: boolean
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+        - code
+        - message
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+        details: {}

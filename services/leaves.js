@@ -1,12 +1,13 @@
-async function isOnLeave(db, personId, date) {
+async function isOnLeave(db, companyId, personId, date) {
   const res = await db.query(`
     SELECT 1
     FROM employee_leaves
-    WHERE person_id = $1
+    WHERE company_id = $1
+      AND person_id = $2
       AND affects_attendance = true
-      AND $2 BETWEEN start_date AND end_date
+      AND $3 BETWEEN start_date AND end_date
     LIMIT 1
-  `, [personId, date]);
+  `, [companyId, personId, date]);
 
   return res.rows.length > 0;
 }

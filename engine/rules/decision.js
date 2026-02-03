@@ -1,3 +1,5 @@
+const { deriveDayStatus } = require('../deriveDayStatus');
+
 function invalidResult(message) {
   return {
     status: 'INVALID',
@@ -5,11 +7,13 @@ function invalidResult(message) {
     last_out: null,
     worked_minutes: 0,
     late_minutes: 0,
+    flags: [],
     explanation: ['Decision: ' + message]
   };
 }
 
 function buildResult(ctx) {
+  const flags = Array.isArray(ctx.decision.flags) ? ctx.decision.flags : [];
   return {
     status: ctx.decision.status,
     reason_code: ctx.decision.reason_code,
@@ -19,6 +23,7 @@ function buildResult(ctx) {
     late_minutes: ctx.metrics.late_minutes,
     break_minutes: ctx.metrics.break_minutes,
     net_worked_minutes: ctx.metrics.net_worked_minutes,
+    flags,
     explanation: ctx.explanation
   };
 }
@@ -34,6 +39,25 @@ function firstStatusRuleType(rules) {
   return rule ? rule.type : 'UNKNOWN_STATUS_RULE';
 }
 
+function addFlag(ctx, flag) {
+  if (!Array.isArray(ctx.decision.flags)) {
+    ctx.decision.flags = [];
+  }
+  if (!ctx.decision.flags.includes(flag)) {
+    ctx.decision.flags.push(flag);
+  }
+}
+
+function isLateByThreshold(ctx) {
+  const rawLate = typeof ctx.metrics.raw_late_minutes === 'number'
+    ? ctx.metrics.raw_late_minutes
+    : ctx.metrics.late_minutes;
+  const threshold = typeof ctx.thresholds.late_threshold_minutes === 'number'
+    ? ctx.thresholds.late_threshold_minutes
+    : 0;
+  return rawLate > threshold;
+}
+
 module.exports = function decideStatus(ctx) {
   if (ctx.invalid) {
     ctx.decision.reason_code = 'INVALID_CONTEXT';
@@ -43,11 +67,31 @@ module.exports = function decideStatus(ctx) {
 
   const rules = ctx.ruleSet?.rules || [];
 
-  if (!ctx.timeline.inEvent) {
-    const ruleType = firstStatusRuleType(rules);
+  const firstIn = ctx.timeline.inEvent ? ctx.timeline.inEvent.event_time : null;
+  const lastOut = ctx.timeline.outEvent ? ctx.timeline.outEvent.event_time : null;
+  const derived = deriveDayStatus({
+    events: ctx.events || [],
+    first_in_utc: firstIn,
+    last_out_utc: lastOut
+  });
+
+  if (derived.status === 'ABSENT') {
     ctx.decision.status = 'ABSENT';
     ctx.decision.reason_code = 'NO_EVENTS';
-    ctx.explanation.push(ruleType + ': no arrival event -> ABSENT');
+    addFlag(ctx, 'NO_EVENTS');
+    ctx.explanation.push('Derived completeness: no events -> ABSENT');
+    ctx.result = buildResult(ctx);
+    return;
+  }
+
+  if (derived.status === 'INCOMPLETE') {
+    ctx.decision.status = 'INCOMPLETE';
+    ctx.decision.reason_code = derived.flags[0];
+    addFlag(ctx, derived.flags[0]);
+    if (isLateByThreshold(ctx)) {
+      addFlag(ctx, 'LATE');
+    }
+    ctx.explanation.push('Derived completeness: incomplete day -> INCOMPLETE');
     ctx.result = buildResult(ctx);
     return;
   }
@@ -56,10 +100,11 @@ module.exports = function decideStatus(ctx) {
     const rule = rules[index];
 
     if (rule.type === 'STATUS_BY_LATE') {
-      if (ctx.metrics.late_minutes > 0) {
-        ctx.decision.status = 'LATE';
+      if (isLateByThreshold(ctx)) {
+        ctx.decision.status = 'PRESENT';
         ctx.decision.reason_code = 'LATE_ARRIVAL';
-        ctx.explanation.push('STATUS_BY_LATE rule applied at index ' + index + ': late -> LATE');
+        addFlag(ctx, 'LATE');
+        ctx.explanation.push('STATUS_BY_LATE rule applied at index ' + index + ': late -> PRESENT (flagged LATE)');
       } else {
         ctx.decision.status = 'PRESENT';
         ctx.decision.reason_code = 'ON_TIME';

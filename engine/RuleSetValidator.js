@@ -8,6 +8,12 @@ const SUPPORTED_RULE_TYPES = new Set([
   'STATUS_BY_WORKED_MINUTES',
   'STATUS_FALLBACK'
 ]);
+const ALLOWED_STATUSES = new Set([
+  'PRESENT',
+  'ABSENT',
+  'INCOMPLETE',
+  'INVALID'
+]);
 
 function isNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
@@ -20,6 +26,7 @@ function invalidResult(issues) {
     last_out: null,
     worked_minutes: 0,
     late_minutes: 0,
+    flags: [],
     explanation: issues.map(issue => 'RuleSetValidator: ' + issue)
   };
 }
@@ -79,12 +86,16 @@ module.exports = {
       if (rule.type === 'STATUS_FALLBACK') {
         if (!rule.status) {
           issues.push('STATUS_FALLBACK requires status');
+        } else if (!ALLOWED_STATUSES.has(rule.status)) {
+          issues.push('STATUS_FALLBACK status must be one of PRESENT, ABSENT, INCOMPLETE, INVALID');
         }
       }
 
       if (rule.type === 'STATUS_BY_WORKED_MINUTES') {
         if (!rule.status) {
           issues.push('STATUS_BY_WORKED_MINUTES requires status');
+        } else if (!ALLOWED_STATUSES.has(rule.status)) {
+          issues.push('STATUS_BY_WORKED_MINUTES status must be one of PRESENT, ABSENT, INCOMPLETE, INVALID');
         }
         if (rule.min_work_minutes !== undefined && !isNumber(rule.min_work_minutes)) {
           issues.push('STATUS_BY_WORKED_MINUTES min_work_minutes must be a number');

@@ -5,6 +5,7 @@ function invalidResult(message) {
     last_out: null,
     worked_minutes: 0,
     late_minutes: 0,
+    flags: [],
     explanation: ['Metrics: ' + message]
   };
 }
@@ -19,6 +20,51 @@ function getStartForLate(ctx) {
   }
 
   return null;
+}
+
+function extractThresholdValue(candidate) {
+  if (candidate === null || candidate === undefined) {
+    return null;
+  }
+  const value = Number(candidate);
+  if (!Number.isFinite(value) || value < 0) {
+    return null;
+  }
+  return value;
+}
+
+function resolveLateThresholdMinutes({ ruleSet, ruleParams, context }) {
+  const sources = [
+    ruleParams,
+    ruleSet,
+    ruleSet?.params,
+    ruleSet?.config,
+    context?.thresholds
+  ];
+  const keys = [
+    'late_threshold_minutes',
+    'threshold_minutes',
+    'thresholdMinutes',
+    'lateThresholdMinutes',
+    'minutes',
+    'threshold'
+  ];
+
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') {
+      continue;
+    }
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        const value = extractThresholdValue(source[key]);
+        if (value !== null) {
+          return value;
+        }
+      }
+    }
+  }
+
+  return 0;
 }
 
 module.exports = function computeMetrics(ctx) {
@@ -70,11 +116,24 @@ module.exports = function computeMetrics(ctx) {
         return;
       }
 
-      const thresholdMinutes = lateAfter !== null ? lateAfter : grace;
-      const thresholdTime = new Date(start.getTime() + thresholdMinutes * 60000);
+      const thresholdMinutes = resolveLateThresholdMinutes({
+        ruleSet: ctx.ruleSet,
+        ruleParams: rule,
+        context: ctx
+      });
+      const graceMinutes = extractThresholdValue(grace);
+      const lateAfterMinutes = extractThresholdValue(lateAfter);
+      const effectiveThreshold = graceMinutes !== null
+        ? graceMinutes
+        : (lateAfterMinutes !== null ? lateAfterMinutes : thresholdMinutes);
+      const thresholdTime = new Date(start.getTime() + effectiveThreshold * 60000);
       const arrivalTime = new Date(inEvent.event_time);
-      const lateMs = Math.max(0, arrivalTime - thresholdTime);
-      ctx.metrics.late_minutes = Math.floor(lateMs / 60000);
+      const rawLateMs = Math.max(0, arrivalTime - start);
+      const rawLateMinutes = Math.floor(rawLateMs / 60000);
+      const penalizedLateMinutes = Math.max(0, rawLateMinutes - effectiveThreshold);
+      ctx.metrics.late_minutes = penalizedLateMinutes;
+      ctx.metrics.raw_late_minutes = rawLateMinutes;
+      ctx.thresholds.late_threshold_minutes = effectiveThreshold;
       ctx.explanation.push('LATE_MINUTES_COMPUTE rule applied at index ' + index);
     }
 

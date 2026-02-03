@@ -24,11 +24,13 @@ function toDateStringUtc(date) {
  */
 router.post('/run', async (req, res) => {
   const {
+    company_id,
     person_id,
     start_date,
     end_date,
     alternate_rule_set
   } = req.body;
+  const companyId = company_id || 'DEFAULT';
 
   const baselineRes = await db.query(`
     SELECT
@@ -37,10 +39,11 @@ router.post('/run', async (req, res) => {
       worked_minutes,
       late_minutes
     FROM attendance_days
-    WHERE person_id = $1
-      AND work_date BETWEEN $2 AND $3
+    WHERE company_id = $1
+      AND person_id = $2
+      AND work_date BETWEEN $3 AND $4
     ORDER BY work_date
-  `, [person_id, start_date, end_date]);
+  `, [companyId, person_id, start_date, end_date]);
 
   const baselineByDate = {};
   baselineRes.rows.forEach(row => {
@@ -50,10 +53,11 @@ router.post('/run', async (req, res) => {
   const eventsRes = await db.query(`
     SELECT person_id, event_time_utc, direction
     FROM device_events
-    WHERE person_id = $1
-      AND event_time_utc::date BETWEEN $2 AND $3
+    WHERE company_id = $1
+      AND person_id = $2
+      AND event_time_utc::date BETWEEN $3 AND $4
     ORDER BY event_time_utc
-  `, [person_id, start_date, end_date]);
+  `, [companyId, person_id, start_date, end_date]);
 
   const eventsByDate = {};
   eventsRes.rows.forEach(e => {
@@ -75,8 +79,8 @@ router.post('/run', async (req, res) => {
 
   const details = [];
   let days_changed = 0;
-  let present_to_late = 0;
-  let late_to_present = 0;
+  let present_to_late_flag = 0;
+  let late_flag_to_present = 0;
   let present_to_absent = 0;
 
   for (const date of dates) {
@@ -115,20 +119,23 @@ const simulated = engine.computeDay({
 });
 
     const baselineStatus = baseline ? baseline.status : null;
-    const baselineLate = baseline ? baseline.late_minutes : null;
+    const baselineLateMinutes = baseline ? baseline.late_minutes : null;
     const baselineWorked = baseline ? baseline.worked_minutes : null;
+    const baselineLateFlag = (baselineLateMinutes ?? 0) > 0;
+    const simulatedLate = (simulated.late_minutes ?? 0) > 0 ||
+      (Array.isArray(simulated.flags) && simulated.flags.includes('LATE'));
 
     const changed =
       simulated.status !== baselineStatus ||
-      simulated.late_minutes !== baselineLate ||
+      simulated.late_minutes !== baselineLateMinutes ||
       simulated.worked_minutes !== baselineWorked;
 
     const reasons = [];
     if (simulated.status !== baselineStatus) {
       reasons.push('status: ' + baselineStatus + ' -> ' + simulated.status);
     }
-    if (simulated.late_minutes !== baselineLate) {
-      reasons.push('late_minutes: ' + baselineLate + ' -> ' + simulated.late_minutes);
+    if (simulated.late_minutes !== baselineLateMinutes) {
+      reasons.push('late_minutes: ' + baselineLateMinutes + ' -> ' + simulated.late_minutes);
     }
     if (simulated.worked_minutes !== baselineWorked) {
       reasons.push('worked_minutes: ' + baselineWorked + ' -> ' + simulated.worked_minutes);
@@ -136,12 +143,12 @@ const simulated = engine.computeDay({
 
     if (changed) days_changed += 1;
 
-    if (baselineStatus === 'PRESENT' && simulated.status === 'LATE') {
-      present_to_late += 1;
+    if (baselineStatus === 'PRESENT' && !baselineLateFlag && simulated.status === 'PRESENT' && simulatedLate) {
+      present_to_late_flag += 1;
     }
 
-    if (baselineStatus === 'LATE' && simulated.status === 'PRESENT') {
-      late_to_present += 1;
+    if (baselineStatus === 'PRESENT' && baselineLateFlag && simulated.status === 'PRESENT' && !simulatedLate) {
+      late_flag_to_present += 1;
     }
 
     if (baselineStatus === 'PRESENT' && simulated.status === 'ABSENT') {
@@ -153,7 +160,7 @@ const simulated = engine.computeDay({
       baseline: {
         status: baselineStatus,
         worked_minutes: baselineWorked,
-        late_minutes: baselineLate
+        late_minutes: baselineLateMinutes
       },
       simulated: {
         status: simulated.status,
@@ -173,8 +180,8 @@ const simulated = engine.computeDay({
     summary: {
       days_total: dates.length,
       days_changed,
-      present_to_late,
-      late_to_present,
+      present_to_late_flag,
+      late_flag_to_present,
       present_to_absent
     },
     details

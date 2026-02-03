@@ -1,0 +1,179 @@
+name: CI Smoke
+
+on:
+  push:
+    branches:
+      - develop
+      - master
+  pull_request:
+    branches:
+      - develop
+      - master
+
+jobs:
+  linux-smoke:
+    runs-on: ubuntu-24.04
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: attendance
+      USE_IDENTITY_MAPPINGS: "1"
+      REQUIRE_IDENTITY_MAPPINGS: "1"
+      USE_EMPLOYEES_REGISTRY: "1"
+      USE_EMPLOYEE_ASSIGNMENTS: "1"
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: attendance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install Dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) {
+            npm ci
+          } else {
+            Write-Error "package-lock.json is required for CI. Please commit it."
+            exit 1
+          }
+      - name: Install Postgres Client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U postgres && exit 0
+            sleep 1
+          done
+          echo "Postgres not ready" >&2
+          exit 1
+      - name: Apply Migrations
+        shell: pwsh
+        run: pwsh -NoProfile -File ./scripts/db/apply-migrations.ps1
+      - name: Run Suite
+        id: run_suite
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
+      - name: "Debug: show run-suite logs"
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "PWD: $(Get-Location)"
+          if (Test-Path ./tests) { Get-ChildItem ./tests } else { Write-Host "tests/ missing" }
+          if (Test-Path ./tests/.tmp) {
+            Write-Host "tests/.tmp contents:"
+            Get-ChildItem ./tests/.tmp
+            if (Test-Path ./tests/.tmp/run-suite-server.out.log) {
+              Write-Host '---- run-suite-server.out.log (tail) ----'
+              Get-Content -Path ./tests/.tmp/run-suite-server.out.log -Tail 200 | ForEach-Object { Write-Host $_ }
+            }
+            if (Test-Path ./tests/.tmp/run-suite-server.err.log) {
+              Write-Host '---- run-suite-server.err.log (tail) ----'
+              Get-Content -Path ./tests/.tmp/run-suite-server.err.log -Tail 200 | ForEach-Object { Write-Host $_ }
+            }
+          } else {
+            Write-Host "tests/.tmp missing"
+          }
+      - name: Upload Logs (on failure)
+        if: steps.run_suite.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-suite-logs
+          path: tests/.tmp/**
+          if-no-files-found: ignore
+      - name: Fail if run-suite failed
+        if: steps.run_suite.outcome == 'failure'
+        run: exit 1
+  windows-smoke:
+    runs-on: windows-latest
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: attendance
+      USE_IDENTITY_MAPPINGS: "1"
+      REQUIRE_IDENTITY_MAPPINGS: "1"
+      USE_EMPLOYEES_REGISTRY: "1"
+      USE_EMPLOYEE_ASSIGNMENTS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install Dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) {
+            npm ci
+          } else {
+            Write-Error "package-lock.json is required for CI. Please commit it."
+            exit 1
+          }
+      - name: Fast Checks
+        id: fast_checks
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $packageJsonPath = Join-Path $PWD 'package.json'
+          if (-not (Test-Path $packageJsonPath)) {
+            Write-Host 'SKIP: package.json missing'
+            exit 0
+          }
+          $packageJson = Get-Content -Raw $packageJsonPath | ConvertFrom-Json
+          $scripts = @{}
+          if ($null -ne $packageJson.scripts) {
+            $packageJson.scripts.PSObject.Properties | ForEach-Object { $scripts[$_.Name] = $true }
+          }
+          $ordered = @('lint', 'typecheck', 'openapi:lint', 'openapi:coverage')
+          foreach ($name in $ordered) {
+            if ($scripts.ContainsKey($name)) {
+              npm run $name
+              if ($LASTEXITCODE -ne 0) {
+                exit $LASTEXITCODE
+              }
+            } else {
+              Write-Host "SKIP: npm run $name (missing)"
+            }
+          }
+      - name: "Debug: windows env"
+        if: always()
+        shell: pwsh
+        run: |
+          node -v
+          npm -v
+          pwsh -v
+          if (Test-Path ./tests) { Get-ChildItem ./tests } else { Write-Host "tests/ missing" }
+      - name: Upload Logs (on failure)
+        if: steps.fast_checks.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-suite-logs
+          path: tests/.tmp/**
+          if-no-files-found: ignore
+      - name: Fail if fast checks failed
+        if: steps.fast_checks.outcome == 'failure'
+        run: exit 1

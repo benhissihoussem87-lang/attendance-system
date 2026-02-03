@@ -1,6 +1,7 @@
+# =========================
+# Node.js
+# =========================
 node_modules/
-.env
-.env.*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -8,3 +9,59 @@ coverage/
 dist/
 build/
 *.log
+
+# =========================
+# Environment files
+# =========================
+.env
+.env.*
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Archives / backups
+# =========================
+*.zip
+*.rar
+*.7z
+
+# =========================
+# Generated CSV artifacts (ZKTeco tools)
+# =========================
+tools/zkteco/*.csv
+tools/zkteco/*_merged.csv
+tools/zkteco/*_normalized.csv
+tools/zkteco/*errors*.csv
+
+# =========================
+# Preview / export outputs
+# =========================
+preview-errors.csv
+
+# =========================
+# OpenAPI inventory artifacts
+# =========================
+docs/openapi/endpoint-inventory.json
+
+# =========================
+# Local / temporary backups
+# =========================
+*backup*
+tests/.tmp/
+docs/full_zkt_tables.md
+tools/zkteco/*.csv
+tools/zkteco/*.mdb
+tools/zkteco/*.rar
+tools/zkteco/*.zip
+
+attendance_schema*.sql
+db_schema.sql
+tables.txt
+services/rules/deriveDayStatus.js
+

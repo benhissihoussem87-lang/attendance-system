@@ -1,9 +1,10 @@
 const { getCompanyConfig } = require('./companyConfig');
 const { getCompanyConfigFromDb } = require('./companyConfigDb');
+const { toBool } = require('./envBool');
 
 async function getCompanyConfigWithSource(db, companyId) {
   const envConfig = getCompanyConfig(companyId);
-  if (process.env.USE_COMPANY_CONFIG_DB !== 'true') {
+  if (!toBool(process.env.USE_COMPANY_CONFIG_DB)) {
     return { ...envConfig, config_source: 'env' };
   }
 

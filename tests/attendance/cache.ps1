@@ -23,8 +23,8 @@ try {
       person_id = 'p1'
       date = $date
       events = @(
-        @{ event_time_utc = "$date`T06:00:00.000Z"; direction = 'IN'; device_uid = '' },
-        @{ event_time_utc = "$date`T16:00:00.000Z"; direction = 'OUT'; device_uid = '' }
+        @{ event_time_utc = "$date`T06:00:00.000Z"; direction = 'IN'; device_uid = 'TEST-DEVICE-1' },
+        @{ event_time_utc = "$date`T16:00:00.000Z"; direction = 'OUT'; device_uid = 'TEST-DEVICE-1' }
       )
     } | ConvertTo-Json -Depth 5) | Out-Null
 
@@ -78,3 +78,4 @@ try {
   Write-Host $_
   exit 1
 }
+
