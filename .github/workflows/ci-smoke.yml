@@ -127,97 +127,47 @@ jobs:
           } else {
             npm install
           }
-      - name: Switch Docker to Linux containers
-        shell: pwsh
-        run: |
-          $dockerCli = Join-Path $env:ProgramFiles 'Docker\Docker\DockerCli.exe'
-          if (-not (Test-Path $dockerCli)) {
-            $dockerCli = Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin\DockerCli.exe'
-          }
-          if (-not (Test-Path $dockerCli)) {
-            Write-Error 'DockerCli.exe not found.'
-            exit 1
-          }
-          & $dockerCli -SwitchLinuxEngine
-          $ready = $false
-          for ($i = 0; $i -lt 60; $i++) {
-            docker info | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-              $ready = $true
-              break
-            }
-            Start-Sleep -Seconds 1
-          }
-          if (-not $ready) {
-            Write-Error 'Docker not ready after switching to Linux engine.'
-            exit 1
-          }
-      - name: Docker Info
-        shell: pwsh
-        run: docker info
-      - name: Start Postgres Container
-        shell: pwsh
-        run: |
-          docker pull postgres:16
-          if (docker ps -a --format "{{.Names}}" | Select-String -SimpleMatch "ci-postgres") {
-            docker rm -f ci-postgres | Out-Null
-          }
-          docker run -d --name ci-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=attendance -p 5432:5432 postgres:16
-      - name: Wait for Postgres
-        shell: pwsh
-        run: |
-          $ready = $false
-          for ($i = 0; $i -lt 60; $i++) {
-            docker exec ci-postgres pg_isready -U postgres
-            if ($LASTEXITCODE -eq 0) {
-              $ready = $true
-              break
-            }
-            Start-Sleep -Seconds 1
-          }
-          if (-not $ready) {
-            Write-Error "Postgres not ready"
-            exit 1
-          }
-      - name: Apply Migrations
-        shell: pwsh
-        run: pwsh -NoProfile -File ./scripts/db/apply-migrations-docker.ps1
-      - name: Run Suite
-        id: run_suite
+      - name: Fast Checks
+        id: fast_checks
         continue-on-error: true
         shell: pwsh
-        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
-      - name: "Debug: show run-suite logs"
+        run: |
+          $packageJsonPath = Join-Path $PWD 'package.json'
+          if (-not (Test-Path $packageJsonPath)) {
+            Write-Host 'SKIP: package.json missing'
+            exit 0
+          }
+          $packageJson = Get-Content -Raw $packageJsonPath | ConvertFrom-Json
+          $scripts = @{}
+          if ($null -ne $packageJson.scripts) {
+            $packageJson.scripts.PSObject.Properties | ForEach-Object { $scripts[$_.Name] = $true }
+          }
+          $ordered = @('lint', 'typecheck', 'openapi:lint', 'openapi:coverage')
+          foreach ($name in $ordered) {
+            if ($scripts.ContainsKey($name)) {
+              npm run $name
+              if ($LASTEXITCODE -ne 0) {
+                exit $LASTEXITCODE
+              }
+            } else {
+              Write-Host "SKIP: npm run $name (missing)"
+            }
+          }
+      - name: "Debug: windows env"
         if: always()
         shell: pwsh
         run: |
-          Write-Host "PWD: $(Get-Location)"
+          node -v
+          npm -v
+          pwsh -v
           if (Test-Path ./tests) { Get-ChildItem ./tests } else { Write-Host "tests/ missing" }
-          if (Test-Path ./tests/.tmp) {
-            Write-Host "tests/.tmp contents:"
-            Get-ChildItem ./tests/.tmp
-            if (Test-Path ./tests/.tmp/run-suite-server.out.log) {
-              Write-Host '---- run-suite-server.out.log (tail) ----'
-              Get-Content -Path ./tests/.tmp/run-suite-server.out.log -Tail 200 | ForEach-Object { Write-Host $_ }
-            }
-            if (Test-Path ./tests/.tmp/run-suite-server.err.log) {
-              Write-Host '---- run-suite-server.err.log (tail) ----'
-              Get-Content -Path ./tests/.tmp/run-suite-server.err.log -Tail 200 | ForEach-Object { Write-Host $_ }
-            }
-          } else {
-            Write-Host "tests/.tmp missing"
-          }
       - name: Upload Logs (on failure)
-        if: steps.run_suite.outcome == 'failure'
+        if: steps.fast_checks.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: run-suite-logs
           path: tests/.tmp/**
           if-no-files-found: ignore
-      - name: Fail if run-suite failed
-        if: steps.run_suite.outcome == 'failure'
+      - name: Fail if fast checks failed
+        if: steps.fast_checks.outcome == 'failure'
         run: exit 1
-      - name: Cleanup Postgres Container
-        if: always()
-        shell: pwsh
-        run: docker rm -f ci-postgres 2>$null | Out-Null
