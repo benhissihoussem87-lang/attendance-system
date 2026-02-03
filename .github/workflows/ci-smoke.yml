@@ -11,7 +11,7 @@ on:
       - main
 
 jobs:
-  windows-smoke:
+  linux-smoke:
     runs-on: ubuntu-latest
     services:
       postgres:
