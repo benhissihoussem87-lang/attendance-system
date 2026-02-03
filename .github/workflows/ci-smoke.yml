@@ -50,10 +50,11 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: postgres
           PGDATABASE: attendance
-        run: ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
+        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
       - name: Upload Logs (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: run-suite-logs
           path: tests/.tmp/**
+          if-no-files-found: ignore
