@@ -66,12 +66,37 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File ./scripts/db/apply-migrations.ps1
       - name: Run Suite
+        id: run_suite
+        continue-on-error: true
         shell: pwsh
         run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
+      - name: Debug: show run-suite logs
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "PWD: $(Get-Location)"
+          if (Test-Path .\tests) { Get-ChildItem .\tests } else { Write-Host "tests/ missing" }
+          if (Test-Path .\tests\.tmp) {
+            Write-Host "tests/.tmp contents:"
+            Get-ChildItem .\tests\.tmp
+            if (Test-Path .\tests\.tmp\run-suite-server.out.log) {
+              Write-Host '---- run-suite-server.out.log (tail) ----'
+              Get-Content -Path .\tests\.tmp\run-suite-server.out.log -Tail 200 | ForEach-Object { Write-Host $_ }
+            }
+            if (Test-Path .\tests\.tmp\run-suite-server.err.log) {
+              Write-Host '---- run-suite-server.err.log (tail) ----'
+              Get-Content -Path .\tests\.tmp\run-suite-server.err.log -Tail 200 | ForEach-Object { Write-Host $_ }
+            }
+          } else {
+            Write-Host "tests/.tmp missing"
+          }
       - name: Upload Logs (on failure)
-        if: failure()
+        if: steps.run_suite.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: run-suite-logs
           path: tests/.tmp/**
           if-no-files-found: ignore
+      - name: Fail if run-suite failed
+        if: steps.run_suite.outcome == 'failure'
+        run: exit 1
