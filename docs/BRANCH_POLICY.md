@@ -1,22 +1,10 @@
 # Branch Policy
 
-## Roles
-- `master`: default branch; release/hotfix only. PRs should rarely target this branch.
-- `develop`: integration branch; default PR base for day-to-day work.
+- `develop` is the day-to-day integration branch and default PR base.
+- `master` is release/hotfix only and is rarely targeted by PRs.
+- CI Smoke must be green: `linux-smoke` and `windows-smoke`.
+- Avoid the common mistake of targeting `master` for routine work.
 
-## Standard PR flow
-1. Branch from `develop`.
-2. Open PR back into `develop`.
-3. CI passes.
-4. Merge.
-5. Delete branch.
-
-## Common mistake to avoid
-- Do not open PRs into `master` by accident.
-
-## Required CI checks
-- CI Smoke / linux-smoke
-- CI Smoke / windows-smoke
-
-## When to use master
-- Release or hotfix decisions only.
+## See also
+- CONTRIBUTING_WORKFLOW.md
+- RELEASE_PROCESS.md
