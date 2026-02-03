@@ -52,7 +52,8 @@ jobs:
           if (Test-Path package-lock.json) {
             npm ci
           } else {
-            npm install
+            Write-Error "package-lock.json is required for CI. Please commit it."
+            exit 1
           }
       - name: Install Postgres Client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
@@ -129,7 +130,8 @@ jobs:
           if (Test-Path package-lock.json) {
             npm ci
           } else {
-            npm install
+            Write-Error "package-lock.json is required for CI. Please commit it."
+            exit 1
           }
       - name: Fast Checks
         id: fast_checks
