@@ -33,7 +33,10 @@ DB smoke tests (Postgres-dependent tests)
 Full test suite (canonical)
 - `.\tests\run-all.ps1` is the canonical test runner.
 - Recommended local flow:
-  - `.\tests\run-suite.ps1`
+  - `.\tests\run-suite.ps1` (deterministic local entrypoint)
+    - Starts a test-safe server unless `-NoServer`
+    - Loads PG env via `.\scripts\db\load-env.ps1` by default
+    - Refuses to run if a server is already listening unless `-UseExistingServer`
   - or, if you want to manage the server yourself:
   - `.\scripts\run-test-server.ps1`
   - `.\tests\run-all.ps1`
