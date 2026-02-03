@@ -1,7 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$runId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$employeeCode = "EMP001-$runId"
+# Suffix employee_code to avoid CI collisions across parallel runs.
 $personId = "employee_registry_$runId"
 $externalId = "EXT_$runId"
 
@@ -58,7 +61,7 @@ try {
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
-      employee_code = 'EMP001'
+      employee_code = $employeeCode
       full_name = 'Ali Ben Salah'
       metadata = @{
         dept = 'IT'
@@ -68,7 +71,7 @@ try {
   $getOne = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT"
   if ($getOne.company_id -ne 'DEFAULT') { throw 'expected company_id DEFAULT' }
   if ($getOne.person_id -ne 'p1') { throw 'expected person_id p1' }
-  if ($getOne.employee_code -ne 'EMP001') { throw 'expected employee_code EMP001' }
+  if ($getOne.employee_code -ne $employeeCode) { throw 'expected employee_code to match run id' }
   if ($getOne.full_name -ne 'Ali Ben Salah') { throw 'expected full_name Ali Ben Salah' }
   if ($getOne.metadata.dept -ne 'IT') { throw 'expected metadata.dept IT' }
 
@@ -121,7 +124,7 @@ try {
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
-        employee_code = 'EMP001'
+        employee_code = $employeeCode
         metadata = @{
           dept = 'HR'
         }

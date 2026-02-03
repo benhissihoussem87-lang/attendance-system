@@ -6,6 +6,10 @@ if ($env:USE_EMPLOYEES_REGISTRY -ne '1') {
 }
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$employeeCode = "EMP001-$runId"
+# Suffix employee_code to avoid CI collisions across parallel runs.
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-07' }
 
 try {
@@ -13,7 +17,7 @@ try {
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
-      employee_code = 'EMP001'
+      employee_code = $employeeCode
       full_name = 'Ali Ben Salah'
       metadata = @{
         dept = 'IT'
@@ -24,7 +28,7 @@ try {
   $record = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value[0] } else { $res[0] }
 
   if (-not $record) { throw 'expected attendance record' }
-  if ($record.employee_code -ne 'EMP001') { throw 'expected employee_code from registry' }
+  if ($record.employee_code -ne $employeeCode) { throw 'expected employee_code from registry' }
   if ($record.full_name -ne 'Ali Ben Salah') { throw 'expected full_name from registry' }
 
   Write-Host 'PASS: employees registry display mode'
