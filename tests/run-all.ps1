@@ -220,6 +220,7 @@ if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'contracts\db.devicesTable.smoke.test.js'
 } else {
   Write-Host 'SKIP: db devices table smoke (PG env vars not set)'
+  Write-Host 'HINT: To enable DB smoke tests, copy .env.example to .env, then run: . .\scripts\db\load-env.ps1'
 }
 Run-NodeTest 'contracts\employeesRegistry.contract.test.js'
 Run-NodeTest 'contracts\employeesRegistry.errorEnvelope.contract.test.js'
@@ -230,6 +231,7 @@ if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'device_events\device_autoregister_from_ingest.test.js'
 } else {
   Write-Host 'SKIP: device auto-register from ingest (PG env vars not set)'
+  Write-Host 'HINT: To enable DB smoke tests, copy .env.example to .env, then run: . .\scripts\db\load-env.ps1'
 }
 Run-NodeTest 'adapters\simplePinCsvAdapter_dates.test.js'
 
