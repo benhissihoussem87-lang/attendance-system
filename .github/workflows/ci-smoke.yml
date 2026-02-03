@@ -19,6 +19,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: attendance
+      CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
       USE_IDENTITY_MAPPINGS: "1"
       REQUIRE_IDENTITY_MAPPINGS: "1"
       USE_EMPLOYEES_REGISTRY: "1"
@@ -111,6 +112,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: attendance
+      CI_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
       USE_IDENTITY_MAPPINGS: "1"
       REQUIRE_IDENTITY_MAPPINGS: "1"
       USE_EMPLOYEES_REGISTRY: "1"
