@@ -100,3 +100,101 @@ jobs:
       - name: Fail if run-suite failed
         if: steps.run_suite.outcome == 'failure'
         run: exit 1
+  windows-smoke:
+    runs-on: windows-latest
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: attendance
+      USE_IDENTITY_MAPPINGS: "1"
+      REQUIRE_IDENTITY_MAPPINGS: "1"
+      USE_EMPLOYEES_REGISTRY: "1"
+      USE_EMPLOYEE_ASSIGNMENTS: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+      - name: Install Dependencies
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) {
+            npm ci
+          } else {
+            npm install
+          }
+      - name: Install Postgres Client
+        shell: pwsh
+        run: |
+          choco install postgresql16 --no-progress
+          "C:\Program Files\PostgreSQL\16\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Start Postgres Container
+        shell: pwsh
+        run: |
+          docker pull postgres:16
+          if (docker ps -a --format "{{.Names}}" | Select-String -SimpleMatch "ci-postgres") {
+            docker rm -f ci-postgres | Out-Null
+          }
+          docker run -d --name ci-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=attendance -p 5432:5432 postgres:16
+      - name: Wait for Postgres
+        shell: pwsh
+        run: |
+          $ready = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            pg_isready -h localhost -p 5432 -U postgres
+            if ($LASTEXITCODE -eq 0) {
+              $ready = $true
+              break
+            }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) {
+            Write-Error "Postgres not ready"
+            exit 1
+          }
+      - name: Apply Migrations
+        shell: pwsh
+        run: pwsh -NoProfile -File ./scripts/db/apply-migrations.ps1
+      - name: Run Suite
+        id: run_suite
+        continue-on-error: true
+        shell: pwsh
+        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
+      - name: "Debug: show run-suite logs"
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host "PWD: $(Get-Location)"
+          if (Test-Path ./tests) { Get-ChildItem ./tests } else { Write-Host "tests/ missing" }
+          if (Test-Path ./tests/.tmp) {
+            Write-Host "tests/.tmp contents:"
+            Get-ChildItem ./tests/.tmp
+            if (Test-Path ./tests/.tmp/run-suite-server.out.log) {
+              Write-Host '---- run-suite-server.out.log (tail) ----'
+              Get-Content -Path ./tests/.tmp/run-suite-server.out.log -Tail 200 | ForEach-Object { Write-Host $_ }
+            }
+            if (Test-Path ./tests/.tmp/run-suite-server.err.log) {
+              Write-Host '---- run-suite-server.err.log (tail) ----'
+              Get-Content -Path ./tests/.tmp/run-suite-server.err.log -Tail 200 | ForEach-Object { Write-Host $_ }
+            }
+          } else {
+            Write-Host "tests/.tmp missing"
+          }
+      - name: Upload Logs (on failure)
+        if: steps.run_suite.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-suite-logs
+          path: tests/.tmp/**
+          if-no-files-found: ignore
+      - name: Fail if run-suite failed
+        if: steps.run_suite.outcome == 'failure'
+        run: exit 1
+      - name: Cleanup Postgres Container
+        if: always()
+        shell: pwsh
+        run: docker rm -f ci-postgres 2>$null | Out-Null
