@@ -19,6 +19,10 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: postgres
       PGDATABASE: attendance
+      USE_IDENTITY_MAPPINGS: "1"
+      REQUIRE_IDENTITY_MAPPINGS: "1"
+      USE_EMPLOYEES_REGISTRY: "1"
+      USE_EMPLOYEE_ASSIGNMENTS: "1"
     services:
       postgres:
         image: postgres:16
