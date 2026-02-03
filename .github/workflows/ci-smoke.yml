@@ -127,6 +127,34 @@ jobs:
           } else {
             npm install
           }
+      - name: Switch Docker to Linux containers
+        shell: pwsh
+        run: |
+          $dockerCli = Join-Path $env:ProgramFiles 'Docker\Docker\DockerCli.exe'
+          if (-not (Test-Path $dockerCli)) {
+            $dockerCli = Join-Path $env:ProgramFiles 'Docker\Docker\resources\bin\DockerCli.exe'
+          }
+          if (-not (Test-Path $dockerCli)) {
+            Write-Error 'DockerCli.exe not found.'
+            exit 1
+          }
+          & $dockerCli -SwitchLinuxEngine
+          $ready = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            docker info | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              $ready = $true
+              break
+            }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) {
+            Write-Error 'Docker not ready after switching to Linux engine.'
+            exit 1
+          }
+      - name: Docker Info
+        shell: pwsh
+        run: docker info
       - name: Start Postgres Container
         shell: pwsh
         run: |
