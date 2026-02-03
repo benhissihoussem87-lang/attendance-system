@@ -204,6 +204,7 @@ if (-not $env:ZKTECO_CHECKTYPE_MAP) {
 Run-NodeTest 'contracts\previewOutput.contract.test.js'
 Run-NodeTest 'contracts\openapi.lint.test.js'
 Run-NodeTest 'contracts\openapi.coverage.test.js'
+Run-NodeTest 'contracts\openapi.fullCoverage.test.js'
 Run-NodeTest 'contracts\openapi.deviceRegistry.coverage.test.js'
 Run-NodeTest 'contracts\devicesRegistry.contract.test.js'
 Run-NodeTest 'contracts\devices.errorEnvelope.contract.test.js'
