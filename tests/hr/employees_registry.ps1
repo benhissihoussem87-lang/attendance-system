@@ -5,6 +5,8 @@ $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $employeeCode = "EMP001-$runId"
 # Suffix employee_code to avoid CI collisions across parallel runs.
+$personIdP1 = "p1-$runId"
+$personIdP2 = "p2-$runId"
 $personId = "employee_registry_$runId"
 $externalId = "EXT_$runId"
 
@@ -57,7 +59,7 @@ function Get-HttpErrorInfo {
 }
 
 try {
-  $putOne = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  $putOne = Invoke-RestMethod "$baseUrl/api/employees-registry/$personIdP1?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -68,9 +70,9 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getOne = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT"
+  $getOne = Invoke-RestMethod "$baseUrl/api/employees-registry/$personIdP1?company_id=DEFAULT"
   if ($getOne.company_id -ne 'DEFAULT') { throw 'expected company_id DEFAULT' }
-  if ($getOne.person_id -ne 'p1') { throw 'expected person_id p1' }
+  if ($getOne.person_id -ne $personIdP1) { throw 'expected person_id to match run id' }
   if ($getOne.employee_code -ne $employeeCode) { throw 'expected employee_code to match run id' }
   if ($getOne.full_name -ne 'Ali Ben Salah') { throw 'expected full_name Ali Ben Salah' }
   if ($getOne.metadata.dept -ne 'IT') { throw 'expected metadata.dept IT' }
@@ -106,7 +108,7 @@ try {
     } | ConvertTo-Json -Depth 6)
   if ($identityUpsert.person_id -ne $personId) { throw 'expected identity mapping upsert to succeed for person_id' }
 
-  $putTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  $putTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/$personIdP1?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -116,11 +118,11 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT"
+  $getTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/$personIdP1?company_id=DEFAULT"
   if ($getTwo.full_name -ne 'Ali Ben Salah Updated') { throw 'expected updated full_name' }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/p2?company_id=DEFAULT" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/$personIdP2?company_id=DEFAULT" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{

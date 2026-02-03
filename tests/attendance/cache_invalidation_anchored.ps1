@@ -2,6 +2,10 @@ $ErrorActionPreference = "Stop"
 
 $baseUrl = "http://localhost:3000"
 $date = "2026-01-06"
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$personId = "p1-$runId"
+$deviceUid = "TEST-DEVICE-1-$runId"
 
 # Require flags ON for this regression test
 if ($env:USE_DERIVED_WORK_DATE -ne "true") { throw "USE_DERIVED_WORK_DATE must be true for this test" }
@@ -13,7 +17,7 @@ Invoke-RestMethod "$baseUrl/api/ops/test/reset" -Method Post -ContentType "appli
   company_timezone="Africa/Tunis"
   night_shift_enabled=$true
   day_start_time="04:00"
-  person_id="p1"
+  person_id=$personId
   date=$date
   events=@()
 } | ConvertTo-Json -Depth 6) | Out-Null
@@ -25,10 +29,10 @@ if ($rCache.source -ne "db") { throw "Expected cache hit from db, got: $($rCache
 
 # insert event with UTC date next day but anchored previous work_date
 Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -ContentType "application/json" -Body (@{
-  person_id="p1"
+  person_id=$personId
   event_time_utc="2026-01-07T02:00:00.000Z"
   direction="IN"
-  device_uid = 'TEST-DEVICE-1'
+  device_uid = $deviceUid
   vendor=$null
   raw_payload=@{}
 } | ConvertTo-Json -Depth 6) | Out-Null

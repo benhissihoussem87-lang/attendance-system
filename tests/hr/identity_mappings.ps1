@@ -1,6 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$personId1 = "p1-$runId"
+$personId2 = "p2-$runId"
+$identifierValue = "123-$runId"
 
 function Get-HttpErrorInfo {
   param($err)
@@ -51,7 +56,7 @@ function Get-HttpErrorInfo {
 }
 
 try {
-  Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/$personId1?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -64,17 +69,17 @@ try {
     -Body (@{
       provider = 'zkteco'
       identifier_type = 'pin'
-      identifier_value = '123'
-      person_id = 'p1'
-      metadata = @{}
-    } | ConvertTo-Json -Depth 6)
+        identifier_value = $identifierValue
+        person_id = $personId1
+        metadata = @{}
+      } | ConvertTo-Json -Depth 6)
 
-  if ($create.person_id -ne 'p1') { throw 'expected person_id p1' }
+  if ($create.person_id -ne $personId1) { throw 'expected person_id to match run id' }
 
-  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=123"
-  if ($lookup.person_id -ne 'p1') { throw 'expected lookup person_id p1' }
+  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=$identifierValue"
+  if ($lookup.person_id -ne $personId1) { throw 'expected lookup person_id to match run id' }
 
-  Invoke-RestMethod "$baseUrl/api/employees-registry/p2?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/$personId2?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -88,8 +93,8 @@ try {
       -Body (@{
         provider = 'zkteco'
         identifier_type = 'pin'
-        identifier_value = '123'
-        person_id = 'p2'
+        identifier_value = $identifierValue
+        person_id = $personId2
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
     throw 'expected conflict on reassignment'
@@ -118,7 +123,7 @@ try {
         provider = 'zkteco'
         identifier_type = 'pin'
         identifier_value = '999'
-        person_id = 'p1'
+        person_id = $personId1
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
     throw 'expected company_id mismatch'

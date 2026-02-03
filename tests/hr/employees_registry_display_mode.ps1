@@ -10,10 +10,11 @@ $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $employeeCode = "EMP001-$runId"
 # Suffix employee_code to avoid CI collisions across parallel runs.
+$personId = "p1-$runId"
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-07' }
 
 try {
-  Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/$personId?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -24,7 +25,7 @@ try {
       }
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1&company_id=DEFAULT"
+  $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=DEFAULT"
   $record = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value[0] } else { $res[0] }
 
   if (-not $record) { throw 'expected attendance record' }

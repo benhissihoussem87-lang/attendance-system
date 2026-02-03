@@ -1,6 +1,9 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$personId = "p1-$runId"
 
 function Get-HttpErrorInfo {
   param($err)
@@ -56,7 +59,7 @@ function Get-HttpErrorInfo {
 try {
   # CASE 1: direct device event insert with empty device_uid => must be 400 + JSON error
   $badEvent = @{
-    person_id = 'p1'
+    person_id = $personId
     event_time_utc = '2026-01-12T08:00:00Z'
     direction = 'IN'
     device_uid = ''
@@ -87,7 +90,7 @@ try {
   # CASE 2: CSV commit with empty device_uid should fail row and insert 0
   $csv = @"
 person_id,event_time,direction,device_uid
-p1,2026-01-12 08:00:00,IN,
+$personId,2026-01-12 08:00:00,IN,
 "@
 
   $res = Invoke-RestMethod "$baseUrl/api/device-events/import/commit" `

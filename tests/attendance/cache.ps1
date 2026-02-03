@@ -2,6 +2,10 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-08' }
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$personId = "p1-$runId"
+$deviceUid = "TEST-DEVICE-1-$runId"
 
 function Unwrap-Value {
   param($res)
@@ -20,11 +24,11 @@ try {
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $true
       day_start_time = '04:00'
-      person_id = 'p1'
+      person_id = $personId
       date = $date
       events = @(
-        @{ event_time_utc = "$date`T06:00:00.000Z"; direction = 'IN'; device_uid = 'TEST-DEVICE-1' },
-        @{ event_time_utc = "$date`T16:00:00.000Z"; direction = 'OUT'; device_uid = 'TEST-DEVICE-1' }
+        @{ event_time_utc = "$date`T06:00:00.000Z"; direction = 'IN'; device_uid = $deviceUid },
+        @{ event_time_utc = "$date`T16:00:00.000Z"; direction = 'OUT'; device_uid = $deviceUid }
       )
     } | ConvertTo-Json -Depth 5) | Out-Null
 

@@ -2,6 +2,9 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $date = '2026-01-12'
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$personId = "p1-$runId"
 
 function Unwrap-Value {
   param($res)
@@ -31,12 +34,12 @@ try {
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $false
       day_start_time = '04:00'
-      person_id = 'p1'
+      person_id = $personId
       date = $date
       events = @()
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $firstRaw = Invoke-RestMethod "$baseUrl/api/attendance?person_id=p1&date=$date"
+  $firstRaw = Invoke-RestMethod "$baseUrl/api/attendance?person_id=$personId&date=$date"
   $firstVal = Unwrap-Value $firstRaw
   $firstArr = @($firstVal)
   if (-not $firstArr -or $firstArr.Count -eq 0) {
@@ -54,7 +57,7 @@ try {
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
-      person_id = 'p1'
+      person_id = $personId
       date = $date
       decided_by = 'HR1'
       effective_status = 'PRESENT'
@@ -68,7 +71,7 @@ try {
     throw 'manual resolution: expected resolution id'
   }
 
-  $secondRaw = Invoke-RestMethod "$baseUrl/api/attendance?person_id=p1&date=$date"
+  $secondRaw = Invoke-RestMethod "$baseUrl/api/attendance?person_id=$personId&date=$date"
   $secondVal = Unwrap-Value $secondRaw
   $secondArr = @($secondVal)
   if (-not $secondArr -or $secondArr.Count -eq 0) {
