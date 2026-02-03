@@ -33,6 +33,8 @@ DB smoke tests (Postgres-dependent tests)
 Full test suite (canonical)
 - `.\tests\run-all.ps1` is the canonical test runner.
 - Recommended local flow:
+  - `.\tests\run-suite.ps1`
+  - or, if you want to manage the server yourself:
   - `.\scripts\run-test-server.ps1`
   - `.\tests\run-all.ps1`
 - If you change env vars affecting server mode (e.g., `ZKTECO_CHECKTYPE_MAP`), restart the server.
