@@ -1,3 +1,5 @@
+# Normalize line endings to avoid CRLF/LF churn and stabilize Linux CI.
+# Keep text files in LF while preserving binary assets as-is.
 * text=auto eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
@@ -12,5 +14,17 @@
 *.md   text eol=lf
 *.ps1  text eol=lf
 *.psm1 text eol=lf
+*.psd1 text eol=lf
+*.txt  text eol=lf
 *.bat  text eol=crlf
 *.cmd  text eol=crlf
+
+# --- Binary (never normalize) ---
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.rar binary
