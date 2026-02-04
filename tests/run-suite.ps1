@@ -26,6 +26,14 @@ $script:HadIdentityPolicy = $false
 $script:IdentityPolicyPrev = $null
 $script:HadChecktypeMap = $false
 $script:ChecktypeMapPrev = $null
+$script:HadUseIdentityMappings = $false
+$script:UseIdentityMappingsPrev = $null
+$script:HadRequireIdentityMappings = $false
+$script:RequireIdentityMappingsPrev = $null
+$script:HadUseEmployeesRegistry = $false
+$script:UseEmployeesRegistryPrev = $null
+$script:HadUseEmployeeAssignments = $false
+$script:UseEmployeeAssignmentsPrev = $null
 $script:HadBaseUrl = $false
 $script:BaseUrlPrev = $null
 $script:HadPort = $false
@@ -118,6 +126,14 @@ try {
   $script:IdentityPolicyPrev = $env:IDENTITY_MAPPING_POLICY
   $script:HadChecktypeMap = $null -ne $env:ZKTECO_CHECKTYPE_MAP
   $script:ChecktypeMapPrev = $env:ZKTECO_CHECKTYPE_MAP
+  $script:HadUseIdentityMappings = $null -ne $env:USE_IDENTITY_MAPPINGS
+  $script:UseIdentityMappingsPrev = $env:USE_IDENTITY_MAPPINGS
+  $script:HadRequireIdentityMappings = $null -ne $env:REQUIRE_IDENTITY_MAPPINGS
+  $script:RequireIdentityMappingsPrev = $env:REQUIRE_IDENTITY_MAPPINGS
+  $script:HadUseEmployeesRegistry = $null -ne $env:USE_EMPLOYEES_REGISTRY
+  $script:UseEmployeesRegistryPrev = $env:USE_EMPLOYEES_REGISTRY
+  $script:HadUseEmployeeAssignments = $null -ne $env:USE_EMPLOYEE_ASSIGNMENTS
+  $script:UseEmployeeAssignmentsPrev = $env:USE_EMPLOYEE_ASSIGNMENTS
   $script:HadBaseUrl = $null -ne $env:BASE_URL
   $script:BaseUrlPrev = $env:BASE_URL
   $script:HadPort = $null -ne $env:PORT
@@ -126,6 +142,10 @@ try {
   $env:ALLOW_TEST_ENDPOINTS = 'true'
   $env:IDENTITY_MAPPING_POLICY = $IdentityMappingPolicy
   $env:ZKTECO_CHECKTYPE_MAP = $ChecktypeMap
+  $env:USE_IDENTITY_MAPPINGS = '1'
+  $env:REQUIRE_IDENTITY_MAPPINGS = '1'
+  $env:USE_EMPLOYEES_REGISTRY = '1'
+  $env:USE_EMPLOYEE_ASSIGNMENTS = '1'
   $env:BASE_URL = $BaseUrl
   $env:PORT = $ServerPort
 
@@ -226,6 +246,26 @@ try {
     $env:ZKTECO_CHECKTYPE_MAP = $script:ChecktypeMapPrev
   } else {
     Remove-Item Env:ZKTECO_CHECKTYPE_MAP -ErrorAction SilentlyContinue
+  }
+  if ($script:HadUseIdentityMappings) {
+    $env:USE_IDENTITY_MAPPINGS = $script:UseIdentityMappingsPrev
+  } else {
+    Remove-Item Env:USE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
+  }
+  if ($script:HadRequireIdentityMappings) {
+    $env:REQUIRE_IDENTITY_MAPPINGS = $script:RequireIdentityMappingsPrev
+  } else {
+    Remove-Item Env:REQUIRE_IDENTITY_MAPPINGS -ErrorAction SilentlyContinue
+  }
+  if ($script:HadUseEmployeesRegistry) {
+    $env:USE_EMPLOYEES_REGISTRY = $script:UseEmployeesRegistryPrev
+  } else {
+    Remove-Item Env:USE_EMPLOYEES_REGISTRY -ErrorAction SilentlyContinue
+  }
+  if ($script:HadUseEmployeeAssignments) {
+    $env:USE_EMPLOYEE_ASSIGNMENTS = $script:UseEmployeeAssignmentsPrev
+  } else {
+    Remove-Item Env:USE_EMPLOYEE_ASSIGNMENTS -ErrorAction SilentlyContinue
   }
   if ($script:HadBaseUrl) {
     $env:BASE_URL = $script:BaseUrlPrev

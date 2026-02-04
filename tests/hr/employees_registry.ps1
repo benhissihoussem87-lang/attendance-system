@@ -3,10 +3,18 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
-$employeeCode = "EMP001-$runId"
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_hrreg"
+$employeeCode = "EMP001_$runSuffix"
 # Suffix employee_code to avoid CI collisions across parallel runs.
-$personId = "employee_registry_$runId"
-$externalId = "EXT_$runId"
+$personId = "employee_registry_$runSuffix"
+$externalId = "EXT_$runSuffix"
+$personIdP1 = "p1"
+$personIdP2 = "p2"
+$encodedPersonId = [uri]::EscapeDataString($personId)
+$encodedPersonIdP1 = [uri]::EscapeDataString($personIdP1)
+$encodedPersonIdP2 = [uri]::EscapeDataString($personIdP2)
 
 function Get-HttpErrorInfo {
   param($err)
@@ -57,7 +65,7 @@ function Get-HttpErrorInfo {
 }
 
 try {
-  $putOne = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  $putOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -68,17 +76,19 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getOne = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT"
+  $getOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT')
   if ($getOne.company_id -ne 'DEFAULT') { throw 'expected company_id DEFAULT' }
-  if ($getOne.person_id -ne 'p1') { throw 'expected person_id p1' }
+  if (-not $getOne.person_id -or [string]::IsNullOrWhiteSpace($getOne.person_id)) {
+    throw ("expected person_id to be present. response={0}" -f ($getOne | ConvertTo-Json -Depth 6))
+  }
   if ($getOne.employee_code -ne $employeeCode) { throw 'expected employee_code to match run id' }
   if ($getOne.full_name -ne 'Ali Ben Salah') { throw 'expected full_name Ali Ben Salah' }
   if ($getOne.metadata.dept -ne 'IT') { throw 'expected metadata.dept IT' }
 
-  $personUrl = "$baseUrl/api/employees-registry/${personId}?company_id=DEFAULT"
-  $escapedPersonId = [regex]::Escape($personId)
-  if ($personUrl -notmatch "/$escapedPersonId\?company_id=") {
-    throw ("expected person URL to include /{0}?company_id=. personId={0} personUrl={1}" -f $personId, $personUrl)
+  $personUrl = ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId, 'DEFAULT')
+  $expectedSegment = "/${encodedPersonId}?company_id="
+  if ($personUrl -notlike "*$expectedSegment*") {
+    throw ("expected person URL to include {0}. personId={1} encodedPersonId={2} personUrl={3}" -f $expectedSegment, $personIdP1, $encodedPersonIdP1, $personUrl)
   }
 
   $putRun = Invoke-RestMethod $personUrl `
@@ -106,7 +116,7 @@ try {
     } | ConvertTo-Json -Depth 6)
   if ($identityUpsert.person_id -ne $personId) { throw 'expected identity mapping upsert to succeed for person_id' }
 
-  $putTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+  $putTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -116,11 +126,11 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getTwo = Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT"
+  $getTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT')
   if ($getTwo.full_name -ne 'Ali Ben Salah Updated') { throw 'expected updated full_name' }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/p2?company_id=DEFAULT" `
+    Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP2, 'DEFAULT') `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -150,7 +160,7 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/p3?company_id=DEFAULT" `
+    Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, 'p3', 'DEFAULT') `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{

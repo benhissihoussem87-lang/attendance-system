@@ -1,7 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$runId = [Guid]::NewGuid().ToString('N')
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_dedupjson"
 
 function Get-HttpErrorInfo {
   param($err)
@@ -89,16 +93,17 @@ try {
     exit 1
   }
 
-  $personId = "dedup_p1_$runId"
-  $identifierValue = "DEDUP-ID-$runId"
+  $personId = "dedup_p1_$runSuffix"
+  $identifierValue = "DEDUP_ID_$runSuffix"
+  $encodedPersonId = [uri]::EscapeDataString($personId)
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$personId" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         company_id = 'DEFAULT'
-        employee_code = "DEDUP_P1_$runId"
+        employee_code = "DEDUP_P1_$runSuffix"
         full_name = 'Dedup P1'
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -129,7 +134,7 @@ try {
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T12:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-DEDUP-1-$runId"
+    device_uid = "DEV-DEDUP-1-$runSuffix"
     vendor = 'generic'
     provider = 'generic'
     identifier_type = 'person_id'

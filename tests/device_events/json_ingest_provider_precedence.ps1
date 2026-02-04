@@ -2,9 +2,14 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
-$runId = [Guid]::NewGuid().ToString('N')
-$personId = "prov_prec_$runId"
-$identifierValue = "PROV-PREC-$runId"
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_provprec"
+$personId = "prov_prec_$runSuffix"
+$identifierValue = "PROV_PREC_$runSuffix"
+$encodedPersonId = [uri]::EscapeDataString($personId)
 
 function Get-HttpErrorInfo {
   param($err)
@@ -68,12 +73,12 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$personId" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        employee_code = "EMP_PROV_PREC_$runId"
+        employee_code = "EMP_PROV_PREC_$runSuffix"
         full_name = 'Provider Precedence'
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -104,7 +109,7 @@ try {
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T15:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-PROV-PREC-$runId"
+    device_uid = "DEV-PROV-PREC-$runSuffix"
     provider = 'ZKTECO'
     vendor = 'ANVIZ'
     identifier_type = 'PIN'

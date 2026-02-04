@@ -3,9 +3,20 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
 $vendor = 'zkteco'
-$date = '2026-01-07'
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_vendmatrix"
+$hash = 0
+foreach ($ch in $safeRunId.ToCharArray()) { $hash = ($hash + [int][char]$ch) }
+$day = 1 + ($hash % 27)
+$date = ("2026-01-{0:00}" -f $day)
+Write-Host ("vendor_csv_matrix date={0}" -f $date)
+$personIds = @('1001', '1002')
 $csvPath = Join-Path $PSScriptRoot '..\..\samples\vendors\zkteco\zkteco_attendance_sample.csv'
 $csv = Get-Content -Raw $csvPath
+$csv = $csv -replace '(?m)2026-01-07\s+', ("$date ")
 
 $prevChecktypeMap = $env:ZKTECO_CHECKTYPE_MAP
 $hadChecktypeMap = $null -ne $env:ZKTECO_CHECKTYPE_MAP
@@ -39,7 +50,7 @@ try {
   $env:ZKTECO_CHECKTYPE_MAP = '{"I":"IN","O":"OUT","0":"IN","1":"OUT"}'
 
   # Idempotent reset around the sample date for each person.
-  foreach ($personId in @('1001', '1002')) {
+  foreach ($personId in $personIds) {
     Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
       -Method Post `
       -ContentType 'application/json' `
@@ -52,8 +63,9 @@ try {
   }
 
   # Seed employees registry idempotently.
-  foreach ($personId in @('1001', '1002')) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=$companyId" `
+  foreach ($personId in $personIds) {
+    $encodedPersonId = [uri]::EscapeDataString($personId)
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -62,7 +74,7 @@ try {
   }
 
   # Seed identity mappings idempotently.
-  foreach ($personId in @('1001', '1002')) {
+  foreach ($personId in $personIds) {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `

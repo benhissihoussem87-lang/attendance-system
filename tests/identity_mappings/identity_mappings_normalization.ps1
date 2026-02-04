@@ -2,16 +2,22 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
-$runId = [Guid]::NewGuid().ToString('N')
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_idmapnorm"
 
 $providerUpper = 'NORMTEST'
 $providerLower = 'normtest'
 $typeUpper = 'PIN'
 $typeLower = 'pin'
-$identifierValueSpaced = " AbC123-$runId "
-$identifierValueTrimmed = "AbC123-$runId"
-$personA = "norm_test_A_$runId"
-$personB = "norm_test_B_$runId"
+$identifierValueSpaced = " AbC123_$runSuffix "
+$identifierValueTrimmed = "AbC123_$runSuffix"
+$personA = "norm_test_A_$runSuffix"
+$personB = "norm_test_B_$runSuffix"
+$encodedPersonA = [uri]::EscapeDataString($personA)
+$encodedPersonB = [uri]::EscapeDataString($personB)
 
 function Get-HttpErrorInfo {
   param($err)
@@ -115,9 +121,9 @@ try {
     exit 1
   }
 
-  $respA = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$personA" @{
+  $respA = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$encodedPersonA" @{
     company_id = $companyId
-    employee_code = "EMP_NORM_A_$runId"
+    employee_code = "EMP_NORM_A_$runSuffix"
     full_name = 'Norm Test A'
     active = $true
   }
@@ -127,9 +133,9 @@ try {
     exit 1
   }
 
-  $respB = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$personB" @{
+  $respB = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$encodedPersonB" @{
     company_id = $companyId
-    employee_code = "EMP_NORM_B_$runId"
+    employee_code = "EMP_NORM_B_$runSuffix"
     full_name = 'Norm Test B'
     active = $true
   }

@@ -1,10 +1,17 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_csvvalid"
+$personId = "p1_$runSuffix"
+$encodedPersonId = [uri]::EscapeDataString($personId)
 $csv = @"
 person_id,event_time,direction
-p1,2026-01-07 08:00:00,IN
-p1,2026-01-07 17:00:00,OUT
+$personId,2026-01-07 08:00:00,IN
+$personId,2026-01-07 17:00:00,OUT
 "@
 
 try {
@@ -16,7 +23,7 @@ try {
   }
 
   if ($mode -and $mode.require_identity_mappings -eq $true) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -29,8 +36,8 @@ try {
       -Body (@{
         provider = 'generic'
         identifier_type = 'person_id'
-        identifier_value = 'p1'
-        person_id = 'p1'
+        identifier_value = $personId
+        person_id = $personId
         active = $true
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null

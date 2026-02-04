@@ -1,8 +1,16 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_csvgen"
+$personId = "p1_$runSuffix"
+$encodedPersonId = [uri]::EscapeDataString($personId)
 $fixturePath = Join-Path $PSScriptRoot '..\fixtures\generic_punchlog.csv'
 $csv = Get-Content -Raw $fixturePath
+$csv = $csv -replace '(?m)^p1,', "$personId,"
 
 try {
   $mode = $null
@@ -13,7 +21,7 @@ try {
   }
 
   if ($mode -and $mode.require_identity_mappings -eq $true) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/p1?company_id=DEFAULT" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -26,8 +34,8 @@ try {
       -Body (@{
         provider = 'generic_punchlog'
         identifier_type = 'person_id'
-        identifier_value = 'p1'
-        person_id = 'p1'
+        identifier_value = $personId
+        person_id = $personId
         active = $true
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null

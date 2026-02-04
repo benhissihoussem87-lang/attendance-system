@@ -1,6 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
-$runId = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_hringest"
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 try {
@@ -133,15 +137,16 @@ function Dump-PreviewDiagnostics {
 
 try {
   $companyId = 'DEFAULT'
-  $personVendor = "ingest_vendor_$runId"
-  $personGeneric = "ingest_generic_$runId"
+  $personVendor = "ingest_vendor_$runSuffix"
+  $personGeneric = "ingest_generic_$runSuffix"
   $vendorProvider = 'zkteco'
-  $vendorIdentifier = "ZK-$runId"
+  $vendorIdentifier = "ZK_$runSuffix"
   $genericProvider = 'generic'
-  $genericIdentifier = "GEN-$runId"
+  $genericIdentifier = "GEN_$runSuffix"
 
-  $vendorEmployeeUrl = "$baseUrl/api/employees-registry/${personVendor}?company_id=$companyId"
-  $escapedVendorId = [regex]::Escape($personVendor)
+  $encodedVendorId = [uri]::EscapeDataString($personVendor)
+  $vendorEmployeeUrl = "$baseUrl/api/employees-registry/${encodedVendorId}?company_id=$companyId"
+  $escapedVendorId = [regex]::Escape($encodedVendorId)
   if ($vendorEmployeeUrl -notmatch "/$escapedVendorId\?company_id=") {
     throw ("expected vendor employee URL to include /{0}?company_id=. personId={0} url={1}" -f $personVendor, $vendorEmployeeUrl)
   }
@@ -155,7 +160,7 @@ try {
 
   $csvMissingVendor = @"
 badgenumber,checktime,checktype,sn
-$vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
+$vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runSuffix
 "@
 
   $vendorHeaders = @{
@@ -250,7 +255,7 @@ $vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
 
   $csv = @"
 badgenumber,checktime,checktype,sn
-$vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
+$vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runSuffix
 "@
 
   $preview = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
@@ -307,8 +312,9 @@ $vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
   }
 
   if ($policy -eq 'all') {
-    $genericEmployeeUrl = "$baseUrl/api/employees-registry/${personGeneric}?company_id=$companyId"
-    $escapedGenericId = [regex]::Escape($personGeneric)
+    $encodedGenericId = [uri]::EscapeDataString($personGeneric)
+    $genericEmployeeUrl = "$baseUrl/api/employees-registry/${encodedGenericId}?company_id=$companyId"
+    $escapedGenericId = [regex]::Escape($encodedGenericId)
     if ($genericEmployeeUrl -notmatch "/$escapedGenericId\?company_id=") {
       throw ("expected generic employee URL to include /{0}?company_id=. personId={0} url={1}" -f $personGeneric, $genericEmployeeUrl)
     }
@@ -322,7 +328,7 @@ $vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runId
 
     $csvMissingGeneric = @"
 person_id,event_time,direction,device_uid
-$genericIdentifier,2026-01-07 09:00:00,IN,TEST-DEVICE-1-generic-$runId
+$genericIdentifier,2026-01-07 09:00:00,IN,TEST-DEVICE-1-generic-$runSuffix
 "@
 
     $genericHeaders = @{

@@ -2,7 +2,16 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
-$runId = [Guid]::NewGuid().ToString('N')
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_polall"
+$personId1 = "generic_p1_$runSuffix"
+$personId2 = "generic_p2_$runSuffix"
+$employeeCode = "GEN_P2_$runSuffix"
+$identifierValue = "GEN_ID_0001_$runSuffix"
+$encodedPersonId2 = [uri]::EscapeDataString($personId2)
 
 function Get-HttpErrorInfo {
   param($err)
@@ -78,10 +87,10 @@ try {
   # CASE A1: generic provider requires mapping when identifiers missing
   $genericMissing = @{
     company_id = $companyId
-    person_id = 'generic_p1'
+    person_id = $personId1
     event_time_utc = '2026-01-27T08:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-GEN-ALL-1-$runId"
+    device_uid = "DEV-GEN-ALL-1-$runSuffix"
     provider = 'generic'
   } | ConvertTo-Json -Depth 6
 
@@ -109,12 +118,12 @@ try {
 
   # CASE A2: generic provider with identity mapping should succeed
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/generic_p2" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId2" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        employee_code = 'GEN_P2'
+        employee_code = $employeeCode
         full_name = 'Generic P2'
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -131,8 +140,8 @@ try {
         company_id = $companyId
         provider = 'generic'
         identifier_type = 'person_id'
-        identifier_value = 'GEN-ID-0001'
-        person_id = 'generic_p2'
+        identifier_value = $identifierValue
+        person_id = $personId2
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
   } catch {
@@ -145,10 +154,10 @@ try {
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T09:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-GEN-ALL-2-$runId"
+    device_uid = "DEV-GEN-ALL-2-$runSuffix"
     provider = 'generic'
     identifier_type = 'person_id'
-    identifier_value = 'GEN-ID-0001'
+    identifier_value = $identifierValue
   } | ConvertTo-Json -Depth 6
 
   try {

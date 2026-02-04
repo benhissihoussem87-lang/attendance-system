@@ -3,9 +3,46 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
 $vendor = 'anviz'
-$date = '2026-01-26'
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$date = if ($env:ATTENDANCE_DATE) {
+  $env:ATTENDANCE_DATE
+} else {
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($safeRunId)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  $hash = $sha.ComputeHash($bytes)
+  $n = ($hash[0] -shl 8) + $hash[1]
+  $day = ($n % 28) + 1
+  ("2026-01-{0:00}" -f $day)
+}
+Write-Host ("vendor_csv_anviz date={0}" -f $date)
+$runSuffix = "${safeRunId}_vendanviz"
+$pinA = "1001_$runSuffix"
+$pinB = "1002_$runSuffix"
+$personIdA = $pinA
+$personIdB = $pinB
+$personIds = @($personIdA, $personIdB)
 $csvPath = Join-Path $PSScriptRoot '..\..\samples\anviz_original_record_sample.txt'
-$csv = Get-Content -Raw $csvPath
+$rawLines = Get-Content -Raw $csvPath
+$lines = $rawLines -split "`r?`n"
+$rows = @("pin`tattendance_time`tattendance_status")
+foreach ($line in $lines) {
+  if ([string]::IsNullOrWhiteSpace($line)) { continue }
+  $tokens = $line -split '\s+'
+  if ($tokens.Count -ge 5) {
+    $pin = $tokens[3]
+    switch ($pin) {
+      '1001' { $pin = $personIdA }
+      '1002' { $pin = $personIdB }
+    }
+    $attendanceTime = "$date $($tokens[2])"
+    $status = $tokens[4]
+    $rows += "$pin`t$attendanceTime`t$status"
+  }
+}
+$csv = $rows -join "`n"
 
 function Fail-WithResponse([string]$label, $response) {
   Write-Host "FAIL: $label"
@@ -32,7 +69,7 @@ try {
     exit 1
   }
 
-  foreach ($personId in @('1001', '1002')) {
+  foreach ($personId in $personIds) {
     Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
       -Method Post `
       -ContentType 'application/json' `
@@ -44,8 +81,9 @@ try {
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
-  foreach ($personId in @('1001', '1002')) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=$companyId" `
+  foreach ($personId in $personIds) {
+    $encodedPersonId = [uri]::EscapeDataString($personId)
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -53,7 +91,7 @@ try {
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
-  foreach ($personId in @('1001', '1002')) {
+  foreach ($personId in $personIds) {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
@@ -94,7 +132,17 @@ try {
     Fail-WithResponse 'vendor_csv_anviz commit' $commit
   }
 
-  foreach ($personId in @('1001', '1002')) {
+  $commitTwo = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=$companyId" `
+    -Method Post `
+    -Headers $headers `
+    -ContentType 'text/plain' `
+    -Body $csv
+
+  if ([int]$commitTwo.inserted_rows -ne 0 -or [int]$commitTwo.skipped_rows -ne $totalRows) {
+    Fail-WithResponse 'vendor_csv_anviz commit_two_dedup' $commitTwo
+  }
+
+  foreach ($personId in $personIds) {
     $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=$companyId"
     $source = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value } else { $res }
     $arr = @($source)
