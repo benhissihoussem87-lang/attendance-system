@@ -1,20 +1,23 @@
 # Normalize line endings to avoid CRLF/LF churn and stabilize Linux CI.
 # Keep text files in LF while preserving binary assets as-is.
-
-# --- PowerShell scripts: keep LF in repo for Linux CI consistency ---
-*.ps1 text eol=lf
+* text=auto eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+*.sql  text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.cjs  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.ps1  text eol=lf
 *.psm1 text eol=lf
 *.psd1 text eol=lf
-
-# --- Shell scripts (if any) ---
-*.sh text eol=lf
-
-# --- Texty configs/docs (safe defaults) ---
-*.yml text eol=lf
-*.yaml text eol=lf
-*.json text eol=lf
-*.md text eol=lf
-*.txt text eol=lf
+*.txt  text eol=lf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
 
 # --- Binary (never normalize) ---
 *.png binary
