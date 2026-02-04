@@ -1,7 +1,13 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$personId = 'ea_' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_hrassign"
+$personId = "ea_$runSuffix"
+$encodedPersonId = [uri]::EscapeDataString($personId)
 $dateWithin = '2026-01-15'
 $dateBefore = '2026-01-05'
 
@@ -51,7 +57,7 @@ try {
   $ruleB = $seedB.rule_set_id
   if (-not $ruleB) { throw 'seed-ruleset did not return rule_set_id for rule B' }
 
-  Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
     -Method Put `
     -ContentType 'application/json' `
     -Body (@{
@@ -59,7 +65,7 @@ try {
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=DEFAULT"
+  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT"
   if ($employee.default_rule_set_id -ne $ruleA) {
     throw 'expected employee default_rule_set_id to match rule A'
   }

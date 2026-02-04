@@ -2,9 +2,14 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
-$runId = [Guid]::NewGuid().ToString('N')
-$personId = "norm_json_$runId"
-$identifierValue = "AbC123-$runId"
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_jsonnorm"
+$personId = "norm_json_$runSuffix"
+$identifierValue = "AbC123_$runSuffix"
+$encodedPersonId = [uri]::EscapeDataString($personId)
 
 function Get-HttpErrorInfo {
   param($err)
@@ -93,12 +98,12 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$personId" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        employee_code = "EMP_JSON_NORM_$runId"
+        employee_code = "EMP_JSON_NORM_$runSuffix"
         full_name = 'JSON Norm Test'
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -129,7 +134,7 @@ try {
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T14:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-NORM-A-$runId"
+    device_uid = "DEV-NORM-A-$runSuffix"
     provider = 'ZKTECO'
     identifier_type = 'PIN'
     identifier_value = $identifierValue
@@ -148,7 +153,7 @@ try {
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T14:05:00Z'
     direction = 'IN'
-    device_uid = "DEV-NORM-B-$runId"
+    device_uid = "DEV-NORM-B-$runSuffix"
     vendor = 'ZKTECO'
     identifier_type = 'PIN'
     identifier_value = $identifierValue

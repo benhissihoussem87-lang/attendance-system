@@ -3,7 +3,17 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
 $date = '2026-01-27'
-$runId = [Guid]::NewGuid().ToString('N')
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_polvend"
+$personId1 = "policy_vendor_p1_$runSuffix"
+$personId2 = "policy_vendor_p2_$runSuffix"
+$personId3 = "policy_vendor_p3_$runSuffix"
+$employeeCode = "PV_P3_$runSuffix"
+$identifierValue = "ZK_PIN_0001_$runSuffix"
+$encodedPersonId3 = [uri]::EscapeDataString($personId3)
 
 function Get-HttpErrorInfo {
   param($err)
@@ -79,10 +89,10 @@ try {
   # CASE A: vendor provider requires mapping when identifiers missing
   $vendorEvent = @{
     company_id = $companyId
-    person_id = 'policy_vendor_p1'
+    person_id = $personId1
     event_time_utc = '2026-01-27T08:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-VM-1-$runId"
+    device_uid = "DEV-VM-1-$runSuffix"
     provider = 'zkteco'
   } | ConvertTo-Json -Depth 6
 
@@ -111,10 +121,10 @@ try {
   # CASE B: generic provider should not require mapping
   $genericEvent = @{
     company_id = $companyId
-    person_id = 'policy_vendor_p2'
+    person_id = $personId2
     event_time_utc = '2026-01-27T09:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-GEN-1-$runId"
+    device_uid = "DEV-GEN-1-$runSuffix"
     provider = 'generic'
   } | ConvertTo-Json -Depth 6
 
@@ -125,12 +135,12 @@ try {
 
   # CASE C: vendor provider should succeed when identity mapping exists
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/policy_vendor_p3" `
+    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId3" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
-        employee_code = 'PV_P3'
+        employee_code = $employeeCode
         full_name = 'Policy Vendor P3'
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
@@ -147,8 +157,8 @@ try {
         company_id = $companyId
         provider = 'zkteco'
         identifier_type = 'pin'
-        identifier_value = 'ZK-PIN-0001'
-        person_id = 'policy_vendor_p3'
+        identifier_value = $identifierValue
+        person_id = $personId3
         active = $true
       } | ConvertTo-Json -Depth 6) | Out-Null
   } catch {
@@ -161,10 +171,10 @@ try {
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T10:00:00Z'
     direction = 'IN'
-    device_uid = "DEV-ZK-MAP-1-$runId"
+    device_uid = "DEV-ZK-MAP-1-$runSuffix"
     provider = 'zkteco'
     identifier_type = 'pin'
-    identifier_value = 'ZK-PIN-0001'
+    identifier_value = $identifierValue
   } | ConvertTo-Json -Depth 6
 
   try {

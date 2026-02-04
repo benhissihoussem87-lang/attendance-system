@@ -3,6 +3,14 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $companyId = 'DEFAULT'
 $date = '2026-01-26'
+$runId = $env:CI_RUN_ID
+if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
+if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
+$runSuffix = "${safeRunId}_vendcsv"
+$personIdA = "1001_$runSuffix"
+$personIdB = "1002_$runSuffix"
+$personIds = @($personIdA, $personIdB)
 
 function Fail-WithResponse([string]$label, $response) {
   Write-Host "FAIL: $label"
@@ -37,7 +45,7 @@ try {
   )
 
   # Reset state around the target date for each person.
-  foreach ($personId in @('1001', '1002')) {
+  foreach ($personId in $personIds) {
     Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
       -Method Post `
       -ContentType 'application/json' `
@@ -50,8 +58,9 @@ try {
   }
 
   # Seed employees registry once.
-  foreach ($personId in @('1001', '1002')) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/${personId}?company_id=$companyId" `
+  foreach ($personId in $personIds) {
+    $encodedPersonId = [uri]::EscapeDataString($personId)
+    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$companyId" `
       -Method Put `
       -ContentType 'application/json' `
       -Body (@{
@@ -63,9 +72,11 @@ try {
     $vendorId = $vendor.id
     $csvPath = Join-Path $PSScriptRoot ('..\\..\\' + $vendor.path)
     $csv = Get-Content -Raw $csvPath
+    $csv = $csv -replace '(?m)^1001,', "$personIdA,"
+    $csv = $csv -replace '(?m)^1002,', "$personIdB,"
 
     # Seed identity mappings per vendor provider.
-    foreach ($personId in @('1001', '1002')) {
+    foreach ($personId in $personIds) {
       Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
         -Method Put `
         -ContentType 'application/json' `
@@ -107,7 +118,7 @@ try {
     }
   }
 
-  foreach ($personId in @('1001', '1002')) {
+  foreach ($personId in $personIds) {
     $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=$companyId"
     $source = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value } else { $res }
     $arr = @($source)
