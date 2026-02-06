@@ -73,7 +73,7 @@ jobs:
         id: run_suite
         continue-on-error: true
         shell: pwsh
-        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
+        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor -RequireAuthForAuthTests
       - name: "Debug: show run-suite logs"
         if: always()
         shell: pwsh

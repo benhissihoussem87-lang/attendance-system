@@ -85,6 +85,8 @@ paths:
     post:
       tags: [device-events]
       operationId: previewDeviceEventsCsv
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - in: query
@@ -116,6 +118,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreviewResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -268,6 +274,8 @@ paths:
     get:
       tags: [identity-mappings]
       operationId: listIdentityMappings
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -297,6 +305,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IdentityMappingsListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           description: Server error
           content:
@@ -306,6 +318,8 @@ paths:
     put:
       tags: [identity-mappings]
       operationId: upsertIdentityMapping
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -322,6 +336,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IdentityMapping"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request (e.g., employee_not_found)
           content:
@@ -377,6 +395,8 @@ paths:
     get:
       tags: [identity-mappings]
       operationId: lookupIdentityMapping
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -402,6 +422,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/IdentityMappingLookupResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request (missing/invalid parameters)
           content:
@@ -445,6 +469,8 @@ paths:
     get:
       tags: [employees-registry]
       operationId: listEmployeesRegistry
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -465,6 +491,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EmployeesListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -499,6 +529,8 @@ paths:
     get:
       tags: [employees-registry]
       operationId: getEmployee
+      security:
+        - ApiKeyAuth: []
       parameters:
         - in: path
           name: person_id
@@ -514,6 +546,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Employee"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -535,6 +571,8 @@ paths:
     put:
       tags: [employees-registry]
       operationId: upsertEmployee
+      security:
+        - ApiKeyAuth: []
       parameters:
         - in: path
           name: person_id
@@ -556,6 +594,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Employee"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -578,9 +620,15 @@ paths:
     get:
       tags: [attendance]
       operationId: getAttendance
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Attendance records
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -692,11 +740,17 @@ paths:
     post:
       tags: [device-events]
       operationId: createDeviceEvent
+      security:
+        - ApiKeyAuth: []
       responses:
         "201":
           description: Inserted
         "200":
           description: Deduplicated
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -724,6 +778,8 @@ paths:
     post:
       tags: [device-events]
       operationId: exportDeviceEventsPreviewErrors
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Exported errors CSV
@@ -731,6 +787,10 @@ paths:
             text/csv:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -747,6 +807,8 @@ paths:
     post:
       tags: [device-events]
       operationId: commitDeviceEventsImport
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - in: query
@@ -778,6 +840,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeviceEventsCommitResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -1006,9 +1072,15 @@ paths:
     get:
       tags: [policy-profiles]
       operationId: listPolicyProfiles
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Policy profiles
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           description: Server error
           content:
@@ -1025,9 +1097,15 @@ paths:
     post:
       tags: [policy-profiles]
       operationId: createPolicyProfile
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Created
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -1062,6 +1140,8 @@ paths:
     get:
       tags: [resolutions]
       operationId: listAttendanceResolutions
+      security:
+        - ApiKeyAuth: []
       parameters:
         - in: path
           name: attendance_day_id
@@ -1071,6 +1151,10 @@ paths:
       responses:
         "200":
           description: Resolutions
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -1104,6 +1188,8 @@ paths:
     post:
       tags: [resolutions]
       operationId: createAttendanceResolution
+      security:
+        - ApiKeyAuth: []
       parameters:
         - in: path
           name: attendance_day_id
@@ -1113,6 +1199,10 @@ paths:
       responses:
         "200":
           description: Created
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -1147,16 +1237,28 @@ paths:
     get:
       tags: [resolutions]
       operationId: listAttendanceReviewQueue
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Review queue
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/resolutions:
     get:
       tags: [resolutions]
       operationId: listResolutions
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Resolutions
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -1207,9 +1309,15 @@ paths:
     post:
       tags: [resolutions]
       operationId: createResolution
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Created
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "400":
           description: Invalid request
           content:
@@ -1368,6 +1476,11 @@ paths:
                   time:
                     type: string
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
   parameters:
     company_id:
       name: company_id
@@ -1409,6 +1522,19 @@ components:
       required: true
       schema:
         type: string
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
     ModeResponse:
       type: object
