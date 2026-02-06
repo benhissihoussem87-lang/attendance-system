@@ -65,3 +65,6 @@ db_schema.sql
 tables.txt
 services/rules/deriveDayStatus.js
 
+
+.tmp/
+
