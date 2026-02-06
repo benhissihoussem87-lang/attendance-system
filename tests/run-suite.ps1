@@ -38,6 +38,8 @@ $script:HadBaseUrl = $false
 $script:BaseUrlPrev = $null
 $script:HadPort = $false
 $script:PortPrev = $null
+$script:HadCiRunId = $false
+$script:CiRunIdPrev = $null
 
 function Write-Section([string]$title) {
   Write-Host ''
@@ -138,6 +140,21 @@ try {
   $script:BaseUrlPrev = $env:BASE_URL
   $script:HadPort = $null -ne $env:PORT
   $script:PortPrev = $env:PORT
+  $script:HadCiRunId = $null -ne $env:CI_RUN_ID
+  $script:CiRunIdPrev = $env:CI_RUN_ID
+
+  $ciValue = if ($env:CI) { $env:CI.ToString().Trim().ToLower() } else { '' }
+  $ciEnabled = ($ciValue -eq '1' -or $ciValue -eq 'true')
+  $isLocalRun = (-not $ciEnabled -and -not $env:GITHUB_RUN_ID)
+  if ($isLocalRun) {
+    $ciRunIdCurrent = if ($env:CI_RUN_ID) { $env:CI_RUN_ID.ToString().Trim() } else { '' }
+    $shouldRefreshCiRunId = (-not $ciRunIdCurrent) -or `
+      $ciRunIdCurrent.StartsWith('local', [System.StringComparison]::OrdinalIgnoreCase) -or `
+      ($ciRunIdCurrent.Length -gt 16)
+    if ($shouldRefreshCiRunId) {
+      $env:CI_RUN_ID = ([guid]::NewGuid().ToString('N')).Substring(0, 8)
+    }
+  }
 
   $env:ALLOW_TEST_ENDPOINTS = 'true'
   $env:IDENTITY_MAPPING_POLICY = $IdentityMappingPolicy
@@ -164,7 +181,25 @@ try {
     $isListening = Test-PortOpen $serverHost $ServerPort
     if (-not $isListening) {
       Write-Host 'Starting server with ALLOW_TEST_ENDPOINTS=true'
+      $repoRootResolved = Resolve-Path -LiteralPath $repoRoot
       $tmpDir = Join-Path $PSScriptRoot '.tmp'
+      $cleanupTargets = @($tmpDir)
+      foreach ($target in $cleanupTargets) {
+        try {
+          if (Test-Path $target) {
+            $resolved = Resolve-Path -LiteralPath $target
+            $repoPrefix = $repoRootResolved.Path.TrimEnd('\') + '\'
+            $targetPath = $resolved.Path.TrimEnd('\') + '\'
+            if ($targetPath.StartsWith($repoPrefix)) {
+              Remove-Item -LiteralPath $resolved.Path -Recurse -Force
+            } else {
+              Write-Host ("WARN: Skipping cleanup for path outside repo root: {0}" -f $resolved.Path)
+            }
+          }
+        } catch {
+          Write-Host ("WARN: Failed to cleanup {0}: {1}" -f $target, $_)
+        }
+      }
       if (-not (Test-Path $tmpDir)) {
         New-Item -Path $tmpDir -ItemType Directory | Out-Null
       }
@@ -276,6 +311,11 @@ try {
     $env:PORT = $script:PortPrev
   } else {
     Remove-Item Env:PORT -ErrorAction SilentlyContinue
+  }
+  if ($script:HadCiRunId) {
+    $env:CI_RUN_ID = $script:CiRunIdPrev
+  } else {
+    Remove-Item Env:CI_RUN_ID -ErrorAction SilentlyContinue
   }
   if ($script:StartedServer -and $script:ServerProcess) {
     try {
