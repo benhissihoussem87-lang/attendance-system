@@ -6,6 +6,8 @@ const {
   createManualResolution,
   listResolutions
 } = require('../services/policy/manualResolutionService');
+const { emitAuditEvent } = require('../services/auditLogger');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 
 function isValidDateString(value) {
@@ -54,7 +56,7 @@ function sendInternalError(res) {
   });
 }
 
-router.post('/', async (req, res) => {
+router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   const {
     company_id,
     person_id,
@@ -65,8 +67,11 @@ router.post('/', async (req, res) => {
     note,
     override
   } = req.body || {};
+  const effectiveCompanyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (company_id || '');
 
-  if (!isNonEmptyString(company_id)) {
+  if (!isNonEmptyString(effectiveCompanyId)) {
     return sendValidationError(res, 'company_id_required', 'company_id is required');
   }
   if (!isNonEmptyString(person_id)) {
@@ -91,7 +96,7 @@ router.post('/', async (req, res) => {
       FROM attendance_days
       WHERE company_id = $1 AND person_id = $2 AND work_date = $3
       LIMIT 1
-    `, [company_id.trim(), person_id.trim(), date]);
+    `, [effectiveCompanyId.trim(), person_id.trim(), date]);
 
     if (attendanceDayRes.rows.length === 0) {
       return sendNotFound(res, 'Call /api/attendance first to compute the day.');
@@ -99,7 +104,7 @@ router.post('/', async (req, res) => {
 
     const row = await createManualResolution(db, {
       attendance_day_id: attendanceDayRes.rows[0].id,
-      company_id: company_id.trim(),
+      company_id: effectiveCompanyId.trim(),
       decided_by: decided_by.trim(),
       action: 'OVERRIDE_EFFECTIVE',
       effective_status: effective_status.trim(),
@@ -108,6 +113,19 @@ router.post('/', async (req, res) => {
       override: override || {}
     });
 
+    emitAuditEvent({
+      actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
+      company_id: effectiveCompanyId.trim(),
+      role: req.ctx ? req.ctx.role : null,
+      action: 'resolutions.manual.create',
+      target: req.originalUrl || req.path,
+      metadata: {
+        attendance_day_id: attendanceDayRes.rows[0].id,
+        person_id: person_id.trim(),
+        effective_status: effective_status.trim(),
+        action: 'OVERRIDE_EFFECTIVE'
+      }
+    });
     return res.status(201).json({ value: row });
   } catch (err) {
     console.error(err);
@@ -115,10 +133,12 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/', async (req, res) => {
-  const companyId = isNonEmptyString(req.query.company_id)
-    ? req.query.company_id.trim()
-    : 'DEFAULT';
+router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
+  const companyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (isNonEmptyString(req.query.company_id)
+      ? req.query.company_id.trim()
+      : 'DEFAULT');
   const personId = req.query.person_id;
   const date = req.query.date;
 

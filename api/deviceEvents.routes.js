@@ -28,6 +28,8 @@ const {
   getIdentityContext: getAdapterIdentityContext,
   getSupportedVendors
 } = require('../adapters/vendors/registry');
+const { emitAuditEvent } = require('../services/auditLogger');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 
 function getDelimiter(req) {
@@ -67,11 +69,48 @@ function isPlainText(req) {
 }
 
 function resolveCompanyId(req, body) {
+  if (req.ctx && req.ctx.company_id) {
+    return req.ctx.company_id;
+  }
   const bodyId = body && typeof body.company_id === 'string' ? body.company_id : null;
   const queryId = req.query && typeof req.query.company_id === 'string' ? req.query.company_id : null;
   const headerId = typeof req.get('x-company-id') === 'string' ? req.get('x-company-id') : null;
 
-  return bodyId || queryId || headerId || 'DEFAULT';
+  return bodyId || queryId || headerId || null;
+}
+
+function inferCompanyIdFromRows(rows) {
+  if (!Array.isArray(rows)) {
+    return null;
+  }
+
+  let found = null;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      continue;
+    }
+    const data = row.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      continue;
+    }
+    const value = data.company_id;
+    if (typeof value !== 'string') {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (found && found !== trimmed) {
+      return { error: 'mixed_company_id' };
+    }
+    found = trimmed;
+  }
+
+  if (!found) {
+    return null;
+  }
+  return { value: found };
 }
 
 function getIdentityContext({ vendor, rowData }) {
@@ -104,7 +143,7 @@ function buildIdentityPayload(rawPayload, identityMeta) {
  * POST /api/device-events
  * Insert single device event (JSON)
  */
-router.post('/', async (req, res) => {
+router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   try {
     const {
       company_id,
@@ -182,7 +221,7 @@ router.post('/', async (req, res) => {
       throw err;
     }
 
-    const companyId = resolveCompanyId(req, req.body || {});
+    const companyId = resolveCompanyId(req, req.body || {}) || 'DEFAULT';
     let resolvedPersonId = person_id;
 
     const useIdentityMappings = toBool(process.env.USE_IDENTITY_MAPPINGS);
@@ -291,6 +330,9 @@ router.post('/', async (req, res) => {
  */
 router.post(
   '/import/preview',
+  requireApiKey,
+  enforceCompanyScope,
+  requireRole('operator'),
   express.raw({ type: '*/*', limit: '10mb' }),
   async (req, res) => {
     try {
@@ -339,7 +381,31 @@ router.post(
           }
         });
       }
-      const companyId = resolveCompanyId(req, null);
+      const inferredCompany = inferCompanyIdFromRows(validation.rows);
+      if (inferredCompany && inferredCompany.error === 'mixed_company_id') {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'mixed_company_id'
+          }
+        });
+      }
+      const resolvedCompanyId = resolveCompanyId(req, null);
+      if (resolvedCompanyId && inferredCompany && inferredCompany.value && inferredCompany.value !== resolvedCompanyId) {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'company_mismatch'
+          }
+        });
+      }
+      const companyId = resolvedCompanyId || (inferredCompany && inferredCompany.value) || 'DEFAULT';
 
       if (Array.isArray(validation.rows)) {
         for (const row of validation.rows) {
@@ -439,6 +505,19 @@ router.post(
       if (!previewResult.sample_rows) {
         previewResult.sample_rows = sample_valid_rows;
       }
+      emitAuditEvent({
+        actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
+        company_id: companyId,
+        role: req.ctx ? req.ctx.role : null,
+        action: 'device_events.import.preview',
+        target: req.originalUrl || req.path,
+        metadata: {
+          vendor,
+          total_rows: previewResult.total_rows,
+          valid_rows: previewResult.valid_rows,
+          invalid_rows: previewResult.invalid_rows
+        }
+      });
       res.json(previewResult);
     } catch (err) {
       console.error(err);
@@ -469,6 +548,9 @@ router.post(
  */
 router.post(
   '/import/preview/export-errors.csv',
+  requireApiKey,
+  enforceCompanyScope,
+  requireRole('operator'),
   express.raw({ type: '*/*', limit: '10mb' }),
   (req, res) => {
     try {
@@ -540,6 +622,9 @@ router.post(
  */
 router.post(
   '/import/commit',
+  requireApiKey,
+  enforceCompanyScope,
+  requireRole('operator'),
   express.raw({ type: '*/*', limit: '10mb' }),
   async (req, res) => {
     try {
@@ -547,7 +632,6 @@ router.post(
         req.body instanceof Buffer
           ? req.body.toString('utf8')
           : '';
-      const companyId = resolveCompanyId(req, null);
 
       if (!csvText.trim()) {
         return sendError(res, {
@@ -603,6 +687,32 @@ router.post(
           }
         });
       }
+
+      const inferredCompany = inferCompanyIdFromRows(validationResult.rows);
+      if (inferredCompany && inferredCompany.error === 'mixed_company_id') {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'mixed_company_id'
+          }
+        });
+      }
+      const resolvedCompanyId = resolveCompanyId(req, null);
+      if (resolvedCompanyId && inferredCompany && inferredCompany.value && inferredCompany.value !== resolvedCompanyId) {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'company_mismatch'
+          }
+        });
+      }
+      const companyId = resolvedCompanyId || (inferredCompany && inferredCompany.value) || 'DEFAULT';
 
     const identityByRow = new Map();
     if (Array.isArray(validationResult.rows)) {
@@ -694,7 +804,6 @@ router.post(
           continue;
         }
 
-        const companyId = normalized.company_id || 'DEFAULT';
         const normalizedVendor = typeof normalized.vendor === 'string' ? normalized.vendor.trim() : '';
         const autoVendor = normalizedVendor
           ? normalizedVendor.toLowerCase()
@@ -787,6 +896,22 @@ router.post(
         }
       }
 
+      emitAuditEvent({
+        actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
+        company_id: companyId,
+        role: req.ctx ? req.ctx.role : null,
+        action: 'device_events.import.commit',
+        target: req.originalUrl || req.path,
+        metadata: {
+          vendor,
+          total_rows: validationResult.total_rows,
+          valid_rows: validationResult.valid_rows,
+          invalid_rows: validationResult.invalid_rows,
+          inserted_rows,
+          skipped_rows,
+          failed_rows
+        }
+      });
       return res.json({
         system_version: SYSTEM_VERSION,
         contract: CSV_CONTRACT,
@@ -911,7 +1036,6 @@ router.post(
         continue;
       }
 
-      const companyId = canonical.company_id || 'DEFAULT';
       const canonicalVendor = typeof canonical.vendor === 'string' ? canonical.vendor.trim() : '';
       const autoVendor = canonicalVendor
         ? canonicalVendor.toLowerCase()
@@ -1004,7 +1128,23 @@ router.post(
       }
     }
 
-      return res.json({
+    emitAuditEvent({
+      actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
+      company_id: companyId,
+      role: req.ctx ? req.ctx.role : null,
+      action: 'device_events.import.commit',
+      target: req.originalUrl || req.path,
+      metadata: {
+        vendor,
+        total_rows: validationResult.total_rows,
+        valid_rows: validationResult.valid_rows,
+        invalid_rows: validationResult.invalid_rows,
+        inserted_rows,
+        skipped_rows,
+        failed_rows
+      }
+    });
+    return res.json({
         system_version: SYSTEM_VERSION,
         contract: CSV_CONTRACT,
         import_version: CSV_IMPORT_VERSION,

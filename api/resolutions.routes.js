@@ -6,6 +6,8 @@ const {
   createManualResolution,
   listResolutions
 } = require('../services/policy/manualResolutionService');
+const { emitAuditEvent } = require('../services/auditLogger');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 
 const ALLOWED_EFFECTIVE_STATUSES = new Set([
@@ -53,7 +55,7 @@ function sendInternalError(res) {
   });
 }
 
-router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
+router.post('/attendance/:attendance_day_id/resolutions', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   const attendanceDayId = req.params.attendance_day_id;
   if (!isValidUuid(attendanceDayId)) {
     return sendValidationError(res, 'attendance_day_id_invalid', 'attendance_day_id must be a UUID');
@@ -68,6 +70,9 @@ router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
     override,
     action
   } = req.body || {};
+  const effectiveCompanyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (company_id || 'DEFAULT');
 
   if (!decided_by || String(decided_by).trim().length === 0) {
     return sendValidationError(res, 'decided_by_required', 'decided_by is required');
@@ -80,7 +85,7 @@ router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
   try {
     const row = await createManualResolution(db, {
       attendance_day_id: attendanceDayId,
-      company_id: company_id || 'DEFAULT',
+      company_id: effectiveCompanyId,
       decided_by: String(decided_by).trim(),
       action: action || 'MANUAL_RESOLUTION',
       effective_status,
@@ -89,6 +94,20 @@ router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
       override
     });
 
+    emitAuditEvent({
+      actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
+      company_id: effectiveCompanyId,
+      role: req.ctx ? req.ctx.role : null,
+      action: 'resolutions.manual.create',
+      target: req.originalUrl || req.path,
+      metadata: {
+        attendance_day_id: attendanceDayId,
+        decided_by: String(decided_by).trim(),
+        effective_status,
+        reason_code: reason_code || null,
+        action: action || 'MANUAL_RESOLUTION'
+      }
+    });
     return res.status(201).json(row);
   } catch (err) {
     console.error(err);
@@ -96,7 +115,7 @@ router.post('/attendance/:attendance_day_id/resolutions', async (req, res) => {
   }
 });
 
-router.get('/attendance/:attendance_day_id/resolutions', async (req, res) => {
+router.get('/attendance/:attendance_day_id/resolutions', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   const attendanceDayId = req.params.attendance_day_id;
   if (!isValidUuid(attendanceDayId)) {
     return sendValidationError(res, 'attendance_day_id_invalid', 'attendance_day_id must be a UUID');
@@ -111,10 +130,12 @@ router.get('/attendance/:attendance_day_id/resolutions', async (req, res) => {
   }
 });
 
-router.get('/attendance/review-queue', async (req, res) => {
+router.get('/attendance/review-queue', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   const dateFrom = req.query.date_from;
   const dateTo = req.query.date_to;
-  const companyId = req.query.company_id || 'DEFAULT';
+  const companyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (req.query.company_id || 'DEFAULT');
 
   if (!dateFrom || !dateTo) {
     return res.status(400).json({ error: 'invalid_request', detail: 'date_from and date_to are required' });
