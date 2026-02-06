@@ -3,6 +3,7 @@ const router = express.Router();
 
 const db = require('../db');
 const { toBool } = require('../services/envBool');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 
 async function getColumnSet(tableName) {
@@ -25,9 +26,37 @@ function isValidDateString(value) {
   return !Number.isNaN(parsed.getTime());
 }
 
+function runMiddleware(middleware, req, res) {
+  return new Promise(resolve => {
+    middleware(req, res, () => resolve(true));
+  });
+}
+
+async function enforceAdminAuth(req, res) {
+  if (!toBool(process.env.REQUIRE_AUTH)) {
+    return true;
+  }
+  await runMiddleware(requireApiKey, req, res);
+  if (res.headersSent) {
+    return false;
+  }
+  await runMiddleware(enforceCompanyScope, req, res);
+  if (res.headersSent) {
+    return false;
+  }
+  await runMiddleware(requireRole('admin'), req, res);
+  if (res.headersSent) {
+    return false;
+  }
+  return true;
+}
+
 router.post('/reset', async (req, res) => {
   if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
+  }
+  if (!await enforceAdminAuth(req, res)) {
+    return;
   }
 
   const {
@@ -40,7 +69,9 @@ router.post('/reset', async (req, res) => {
     events = []
   } = req.body || {};
 
-  const companyId = company_id || 'DEFAULT';
+  const companyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (company_id || 'DEFAULT');
   const safeCompanyTimezone = company_timezone || 'Africa/Tunis';
   const safeNightShiftEnabled = typeof night_shift_enabled === 'boolean' ? night_shift_enabled : false;
   const safeDayStartTime = day_start_time || '04:00';
@@ -244,6 +275,9 @@ router.post('/seed-leave', async (req, res) => {
       }
     });
   }
+  if (!await enforceAdminAuth(req, res)) {
+    return;
+  }
 
   const {
     company_id,
@@ -272,7 +306,9 @@ router.post('/seed-leave', async (req, res) => {
   try {
     await db.query('BEGIN');
 
-    const companyId = company_id || 'DEFAULT';
+    const companyId = (req.ctx && req.ctx.company_id)
+      ? req.ctx.company_id
+      : (company_id || 'DEFAULT');
     const leavesCols = await getColumnSet('employee_leaves');
     const hasCompanyId = leavesCols.has('company_id');
     const hasAffectsAttendance = leavesCols.has('affects_attendance');
@@ -360,13 +396,18 @@ router.post('/seed-nonworking', async (req, res) => {
   if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
+  if (!await enforceAdminAuth(req, res)) {
+    return;
+  }
 
   const {
     company_id,
     date
   } = req.body || {};
 
-  const companyId = company_id || 'DEFAULT';
+  const companyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (company_id || 'DEFAULT');
   if (!isValidDateString(date)) {
     return res.status(400).json({ error: 'invalid_request', detail: 'date must be YYYY-MM-DD' });
   }
@@ -427,8 +468,13 @@ router.get('/attendance-days/count', async (req, res) => {
   if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
+  if (!await enforceAdminAuth(req, res)) {
+    return;
+  }
 
-  const companyId = req.query.company_id || 'DEFAULT';
+  const companyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (req.query.company_id || 'DEFAULT');
   const personId = req.query.person_id;
   const workDate = req.query.work_date;
 
@@ -456,6 +502,42 @@ router.get('/mode', (req, res) => {
   if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
   }
+  if (toBool(process.env.REQUIRE_AUTH)) {
+    runMiddleware(requireApiKey, req, res)
+      .then(() => {
+        if (res.headersSent) {
+          return null;
+        }
+        return runMiddleware(enforceCompanyScope, req, res);
+      })
+      .then(() => {
+        if (res.headersSent) {
+          return null;
+        }
+        return runMiddleware(requireRole('admin'), req, res);
+      })
+      .then(() => {
+        if (res.headersSent) {
+          return null;
+        }
+        const policy = (process.env.IDENTITY_MAPPING_POLICY || 'all').trim().toLowerCase();
+        return res.json({
+          allow_test_endpoints: toBool(process.env.ALLOW_TEST_ENDPOINTS),
+          use_identity_mappings: toBool(process.env.USE_IDENTITY_MAPPINGS),
+          require_identity_mappings: toBool(process.env.REQUIRE_IDENTITY_MAPPINGS),
+          identity_mapping_policy: policy,
+          use_employees_registry: toBool(process.env.USE_EMPLOYEES_REGISTRY),
+          use_employee_assignments: toBool(process.env.USE_EMPLOYEE_ASSIGNMENTS)
+        });
+      })
+      .catch(err => {
+        console.error(err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'server_error' });
+        }
+      });
+    return;
+  }
 
   const policy = (process.env.IDENTITY_MAPPING_POLICY || 'all').trim().toLowerCase();
 
@@ -472,6 +554,9 @@ router.get('/mode', (req, res) => {
 router.post('/seed-ruleset', async (req, res) => {
   if (!toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
     return res.status(404).json({ error: 'Not found' });
+  }
+  if (!await enforceAdminAuth(req, res)) {
+    return;
   }
 
   const {

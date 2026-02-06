@@ -17,6 +17,7 @@ const { getEmployee } = require('../services/employeesDb');
 const { resolveRuleSetIdForDate } = require('../services/employeeAssignmentsService');
 const { getEmployeeDisplay } = require('../services/employeeDirectory');
 const { toBool } = require('../services/envBool');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 const {
   buildComputationSignature,
@@ -144,7 +145,7 @@ function sendInternalError(res) {
   });
 }
 
-router.get('/', async (req, res) => {
+router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const date = req.query.date;
     if (!isValidDateString(date)) {
@@ -154,7 +155,9 @@ router.get('/', async (req, res) => {
     const personIdParam = req.query.person_id;
     const usedDefaultPerson = !personIdParam;
     const personId = personIdParam || employee.person_id;
-    const companyId = req.query.company_id || req.get('x-company-id') || 'DEFAULT';
+    const companyId = (req.ctx && req.ctx.company_id)
+      ? req.ctx.company_id
+      : (req.query.company_id || req.get('x-company-id') || 'DEFAULT');
     const ruleSetIdParam = req.query.rule_set_id;
     const ruleSetIdRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (ruleSetIdParam && !ruleSetIdRegex.test(ruleSetIdParam)) {

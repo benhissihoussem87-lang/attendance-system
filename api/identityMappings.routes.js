@@ -7,6 +7,8 @@ const {
   getIdentityMapping,
   upsertIdentityMapping
 } = require('../services/identityMappingsDb');
+const { emitAuditEvent } = require('../services/auditLogger');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 
 function isPlainObject(value) {
@@ -14,6 +16,9 @@ function isPlainObject(value) {
 }
 
 function resolveCompanyId(req, body) {
+  if (req.ctx && req.ctx.company_id) {
+    return { value: req.ctx.company_id };
+  }
   const bodyId = body && typeof body.company_id === 'string' ? body.company_id : null;
   const queryId = req.query && typeof req.query.company_id === 'string' ? req.query.company_id : null;
   const headerId = typeof req.get('x-company-id') === 'string' ? req.get('x-company-id') : null;
@@ -51,7 +56,7 @@ function parseActive(value) {
   return null;
 }
 
-router.get('/', async (req, res) => {
+router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
@@ -104,7 +109,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/lookup', async (req, res) => {
+router.get('/lookup', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
@@ -168,7 +173,7 @@ router.get('/lookup', async (req, res) => {
   }
 });
 
-router.put('/', async (req, res) => {
+router.put('/', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   try {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
@@ -215,6 +220,20 @@ router.put('/', async (req, res) => {
     }
 
     const saved = await upsertIdentityMapping(db, companyId, body);
+    emitAuditEvent({
+      actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
+      company_id: companyId,
+      role: req.ctx ? req.ctx.role : null,
+      action: 'identity_mappings.upsert',
+      target: req.originalUrl || req.path,
+      metadata: {
+        provider: saved.provider,
+        identifier_type: saved.identifier_type,
+        identifier_value: saved.identifier_value,
+        person_id: saved.person_id,
+        active: saved.active
+      }
+    });
     return res.json(saved);
   } catch (err) {
     if (err && err.code === 'employee_not_found') {
