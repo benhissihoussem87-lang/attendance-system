@@ -221,6 +221,7 @@ Run-NodeTest 'contracts\seedLeave.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\deviceEvents.jsonIngest.errorEnvelope.contract.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'contracts\db.devicesTable.smoke.test.js'
+  Run-NodeTest 'contracts\db.coreConstraints.contract.test.js'
 } else {
   Write-Host 'SKIP: db devices table smoke (PG env vars not set)'
   Write-Host 'HINT: To enable DB smoke tests, copy .env.example to .env, then run: . .\scripts\db\load-env.ps1'
