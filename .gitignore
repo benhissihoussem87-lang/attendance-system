@@ -63,8 +63,4 @@ tools/zkteco/*.zip
 attendance_schema*.sql
 db_schema.sql
 tables.txt
-services/rules/deriveDayStatus.js
-
-
 .tmp/
-
