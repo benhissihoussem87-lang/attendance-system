@@ -39,14 +39,25 @@ async function isNonWorkingDay(db, companyId, workDate) {
 }
 
 async function isOnLeave(db, companyId, personId, workDate) {
-  const res = await db.query(`
+  const queryByAffectsColumn = useAffectsAttendance => db.query(`
     SELECT 1
     FROM employee_leaves
     WHERE company_id = $1
       AND person_id = $2
       AND $3 BETWEEN start_date AND end_date
+      ${useAffectsAttendance ? 'AND affects_attendance = true' : ''}
     LIMIT 1
   `, [companyId, personId, workDate]);
+
+  let res;
+  try {
+    res = await queryByAffectsColumn(true);
+  } catch (err) {
+    if (!err || err.code !== '42703') {
+      throw err;
+    }
+    res = await queryByAffectsColumn(false);
+  }
 
   return res.rows.length > 0;
 }

@@ -2,6 +2,10 @@ openapi: 3.1.0
 info:
   title: Attendance System API
   version: 0.1.0
+  description: |
+    Multi-tenant API scoped by `company_id`.
+    When authentication is enabled, tenant is derived from credentials (for example API key context).
+    Request-scoped `company_id` parameters are primarily for development/testing and non-auth deployments.
 servers:
   - url: http://localhost:3000
 tags:
@@ -85,6 +89,9 @@ paths:
     post:
       tags: [device-events]
       operationId: previewDeviceEventsCsv
+      description: |
+        Previews CSV ingestion using vendor-specific parsing.
+        `x-vendor` (or `vendor`) selects device/vendor format only; it does not determine tenant.
       security:
         - ApiKeyAuth: []
       parameters:
@@ -807,6 +814,9 @@ paths:
     post:
       tags: [device-events]
       operationId: commitDeviceEventsImport
+      description: |
+        Commits CSV ingestion using vendor-specific parsing.
+        `x-vendor` (or `vendor`) selects device/vendor format only; it does not determine tenant.
       security:
         - ApiKeyAuth: []
       parameters:
@@ -1485,6 +1495,10 @@ components:
     company_id:
       name: company_id
       in: query
+      description: |
+        Tenant scoping. In production, prefer auth-derived tenant.
+        Query param is primarily for dev/testing and non-auth deployments.
+        CSV row values are not authoritative for tenant scoping.
       schema:
         type: string
         default: DEFAULT
