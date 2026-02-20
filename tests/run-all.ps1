@@ -181,6 +181,7 @@ $scriptList += @(
   'attendance\cache.ps1',
   'attendance\policy_always_computes.ps1',
   'attendance\incomplete.ps1',
+  'attendance\resolution_company_guard.ps1',
   'attendance\manual_resolution_overlay.ps1',
   'device_events\device_identity_required.ps1',
   'rulesets\db_ruleset_selection.ps1',

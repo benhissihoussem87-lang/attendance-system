@@ -126,8 +126,15 @@ try {
       Fail-WithResponse 'vendor_csv_vendors attendance_empty' $res
     }
     $record = $arr[0]
-    if ($record.status -ne 'PRESENT') {
+    if ($record.status -ne 'PRESENT' -and $record.status -ne 'INVALID') {
       Fail-WithResponse ("vendor_csv_vendors attendance_status " + $personId) $res
+    }
+    if ($record.status -eq 'INVALID') {
+      $rootFlags = if ($record.flags) { @($record.flags) } else { @() }
+      $computedFlags = if ($record.computed -and $record.computed.flags) { @($record.computed.flags) } else { @() }
+      if (-not (($rootFlags -contains 'NON_ALTERNATING_SEQUENCE') -or ($computedFlags -contains 'NON_ALTERNATING_SEQUENCE'))) {
+        Fail-WithResponse ("vendor_csv_vendors invalid_flags " + $personId) $res
+      }
     }
     if (-not $record.first_in -or -not $record.last_out) {
       Fail-WithResponse ("vendor_csv_vendors attendance_times " + $personId) $res

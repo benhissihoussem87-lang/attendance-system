@@ -58,6 +58,38 @@ function isLateByThreshold(ctx) {
   return rawLate > threshold;
 }
 
+function addUnique(list, value) {
+  if (!list.includes(value)) {
+    list.push(value);
+  }
+}
+
+function validateEventSequence(events) {
+  const flags = [];
+  const notes = [];
+  if (!Array.isArray(events) || events.length === 0) {
+    return { flags, notes };
+  }
+
+  const firstDirection = events[0] ? events[0].direction : null;
+  if (firstDirection === 'OUT') {
+    addUnique(flags, 'FIRST_EVENT_OUT');
+    notes.push('first event direction is OUT');
+  }
+
+  for (let index = 1; index < events.length; index += 1) {
+    const previousDirection = events[index - 1] ? events[index - 1].direction : null;
+    const direction = events[index] ? events[index].direction : null;
+    if ((direction === 'IN' || direction === 'OUT') && direction === previousDirection) {
+      addUnique(flags, 'NON_ALTERNATING_SEQUENCE');
+      addUnique(flags, 'MULTIPLE_SAME_DIRECTION');
+      notes.push('repeated direction at index ' + index);
+    }
+  }
+
+  return { flags, notes };
+}
+
 module.exports = function decideStatus(ctx) {
   if (ctx.invalid) {
     ctx.decision.reason_code = 'INVALID_CONTEXT';
@@ -69,6 +101,19 @@ module.exports = function decideStatus(ctx) {
 
   const firstIn = ctx.timeline.inEvent ? ctx.timeline.inEvent.event_time : null;
   const lastOut = ctx.timeline.outEvent ? ctx.timeline.outEvent.event_time : null;
+  const sequenceValidation = validateEventSequence(ctx.events || []);
+  if (sequenceValidation.flags.length > 0) {
+    ctx.decision.status = 'INVALID';
+    ctx.decision.reason_code = sequenceValidation.flags[0];
+    sequenceValidation.flags.forEach(flag => addFlag(ctx, flag));
+    sequenceValidation.notes.forEach(note => {
+      ctx.explanation.push('Sequence validation: ' + note);
+    });
+    ctx.explanation.push('Sequence validation: invalid event sequence -> INVALID');
+    ctx.result = buildResult(ctx);
+    return;
+  }
+
   const derived = deriveDayStatus({
     events: ctx.events || [],
     first_in_utc: firstIn,

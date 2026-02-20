@@ -19,9 +19,10 @@ function Next-Date {
 
 try {
   $dateB = Next-Date $date
+  $dateC = Next-Date $dateB
   $allowedStatuses = @('ABSENT', 'INCOMPLETE', 'PRESENT', 'INVALID')
 
-  # CASE A: ON_LEAVE still computes + persists
+  # CASE A: leave with affects_attendance=false does not force ON_LEAVE
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
     -ContentType 'application/json' `
@@ -42,9 +43,58 @@ try {
       person_id = 'p1'
       company_id = 'DEFAULT'
       date = $date
+      affects_attendance = $false
     } | ConvertTo-Json -Depth 5) | Out-Null
 
-  $leaveRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1"
+  $leaveIgnoredRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1"
+  $leaveIgnoredVal = Unwrap-Value $leaveIgnoredRaw
+  $leaveIgnoredArr = @($leaveIgnoredVal)
+  if (-not $leaveIgnoredArr -or $leaveIgnoredArr.Count -eq 0) {
+    throw 'leave ignored case: no data returned'
+  }
+  if (-not $leaveIgnoredArr[0].computed) {
+    throw 'leave ignored case: computed is missing'
+  }
+  if (-not ($allowedStatuses -contains $leaveIgnoredArr[0].computed.status)) {
+    throw "leave ignored case: unexpected computed.status $($leaveIgnoredArr[0].computed.status)"
+  }
+  if ($leaveIgnoredArr[0].effective.status -eq 'ON_LEAVE') {
+    throw 'leave ignored case: expected effective.status not ON_LEAVE when affects_attendance=false'
+  }
+  if ($leaveIgnoredArr[0].source -eq 'policy') {
+    throw 'leave ignored case: source should not be policy-only'
+  }
+
+  $leaveIgnoredCount = Invoke-RestMethod "$baseUrl/api/ops/test/attendance-days/count?person_id=p1&work_date=$date"
+  if ($leaveIgnoredCount.count -lt 1) {
+    throw 'leave ignored case: expected attendance_days row'
+  }
+
+  # CASE B: leave with affects_attendance=true forces ON_LEAVE
+  Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
+    -Method Post `
+    -ContentType 'application/json' `
+    -Body (@{
+      company_id = 'DEFAULT'
+      company_timezone = 'Africa/Tunis'
+      night_shift_enabled = $false
+      day_start_time = '04:00'
+      person_id = 'p1'
+      date = $dateB
+      events = @()
+    } | ConvertTo-Json -Depth 6) | Out-Null
+
+  Invoke-RestMethod "$baseUrl/api/ops/test/seed-leave" `
+    -Method Post `
+    -ContentType 'application/json' `
+    -Body (@{
+      person_id = 'p1'
+      company_id = 'DEFAULT'
+      date = $dateB
+      affects_attendance = $true
+    } | ConvertTo-Json -Depth 5) | Out-Null
+
+  $leaveRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateB&person_id=p1"
   $leaveVal = Unwrap-Value $leaveRaw
   $leaveArr = @($leaveVal)
   if (-not $leaveArr -or $leaveArr.Count -eq 0) {
@@ -63,12 +113,12 @@ try {
     throw 'leave case: source should not be policy-only'
   }
 
-  $leaveCount = Invoke-RestMethod "$baseUrl/api/ops/test/attendance-days/count?person_id=p1&work_date=$date"
+  $leaveCount = Invoke-RestMethod "$baseUrl/api/ops/test/attendance-days/count?person_id=p1&work_date=$dateB"
   if ($leaveCount.count -lt 1) {
     throw 'leave case: expected attendance_days row'
   }
 
-  # CASE B: NON_WORKING_DAY still computes + persists
+  # CASE C: NON_WORKING_DAY still computes + persists
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
     -ContentType 'application/json' `
@@ -78,7 +128,7 @@ try {
       night_shift_enabled = $false
       day_start_time = '04:00'
       person_id = 'p1'
-      date = $dateB
+      date = $dateC
       events = @()
     } | ConvertTo-Json -Depth 6) | Out-Null
 
@@ -87,10 +137,10 @@ try {
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
-      date = $dateB
+      date = $dateC
     } | ConvertTo-Json -Depth 5) | Out-Null
 
-  $nonWorkRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateB&person_id=p1"
+  $nonWorkRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateC&person_id=p1"
   $nonWorkVal = Unwrap-Value $nonWorkRaw
   $nonWorkArr = @($nonWorkVal)
   if (-not $nonWorkArr -or $nonWorkArr.Count -eq 0) {
@@ -109,7 +159,7 @@ try {
     throw 'non-working case: source should not be policy-only'
   }
 
-  $nonWorkCount = Invoke-RestMethod "$baseUrl/api/ops/test/attendance-days/count?person_id=p1&work_date=$dateB"
+  $nonWorkCount = Invoke-RestMethod "$baseUrl/api/ops/test/attendance-days/count?person_id=p1&work_date=$dateC"
   if ($nonWorkCount.count -lt 1) {
     throw 'non-working case: expected attendance_days row'
   }

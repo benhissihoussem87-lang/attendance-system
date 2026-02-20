@@ -47,6 +47,29 @@ function sendValidationError(res, error, detail) {
   });
 }
 
+function sendNotFound(res, detail) {
+  return sendError(res, {
+    status: 404,
+    code: 'LOOKUP_NOT_FOUND',
+    message: 'Attendance day not found',
+    details: {
+      kind: 'lookup_error',
+      error: 'attendance_day_not_found',
+      detail
+    }
+  });
+}
+
+async function attendanceDayExistsForCompany(attendanceDayId, companyId) {
+  const res = await db.query(`
+    SELECT id
+    FROM attendance_days
+    WHERE id = $1 AND company_id = $2
+    LIMIT 1
+  `, [attendanceDayId, companyId]);
+  return res.rows.length > 0;
+}
+
 function sendInternalError(res) {
   return sendError(res, {
     status: 500,
@@ -83,6 +106,11 @@ router.post('/attendance/:attendance_day_id/resolutions', requireApiKey, enforce
   }
 
   try {
+    const attendanceDayExists = await attendanceDayExistsForCompany(attendanceDayId, effectiveCompanyId);
+    if (!attendanceDayExists) {
+      return sendNotFound(res, 'Call /api/attendance first to compute the day.');
+    }
+
     const row = await createManualResolution(db, {
       attendance_day_id: attendanceDayId,
       company_id: effectiveCompanyId,
@@ -120,8 +148,16 @@ router.get('/attendance/:attendance_day_id/resolutions', requireApiKey, enforceC
   if (!isValidUuid(attendanceDayId)) {
     return sendValidationError(res, 'attendance_day_id_invalid', 'attendance_day_id must be a UUID');
   }
+  const effectiveCompanyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (req.query.company_id || req.get('x-company-id') || 'DEFAULT');
 
   try {
+    const attendanceDayExists = await attendanceDayExistsForCompany(attendanceDayId, effectiveCompanyId);
+    if (!attendanceDayExists) {
+      return sendNotFound(res, 'Call /api/attendance first to compute the day.');
+    }
+
     const rows = await listResolutions(db, attendanceDayId);
     return res.json(rows);
   } catch (err) {
