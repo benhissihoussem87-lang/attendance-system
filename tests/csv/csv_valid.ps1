@@ -43,7 +43,7 @@ try {
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
-  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/preview" `
+  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
     -Method Post `
     -ContentType 'text/plain' `
     -Body $csv

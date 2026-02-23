@@ -9,7 +9,7 @@ $person,2026-01-07T17:00:00Z,OUT
 "@
 
 try {
-  $first = Invoke-RestMethod "$baseUrl/api/device-events/import/commit" `
+  $first = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
     -Method Post `
     -ContentType 'text/plain' `
     -Body $csv
@@ -18,7 +18,7 @@ try {
     exit 1
   }
 
-  $second = Invoke-RestMethod "$baseUrl/api/device-events/import/commit" `
+  $second = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
     -Method Post `
     -ContentType 'text/plain' `
     -Body $csv

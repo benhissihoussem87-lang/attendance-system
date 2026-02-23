@@ -90,7 +90,7 @@ person_id,event_time,direction,device_uid
 p1,2026-01-12 08:00:00,IN,
 "@
 
-  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/commit" `
+  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
     -Method Post `
     -ContentType 'text/plain' `
     -Body $csv
