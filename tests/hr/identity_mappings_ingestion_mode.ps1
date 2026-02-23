@@ -4,7 +4,8 @@ $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
 if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
-$runSuffix = "${safeRunId}_hringest"
+$nonce = ([guid]::NewGuid().ToString('N')).Substring(0, 6)
+$runSuffix = "${safeRunId}_${nonce}_hringest"
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 try {
