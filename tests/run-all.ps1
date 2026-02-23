@@ -185,6 +185,7 @@ $scriptList += @(
   'attendance\incomplete.ps1',
   'attendance\resolution_company_guard.ps1',
   'attendance\manual_resolution_overlay.ps1',
+  'attendance\manual_overrides_auto_policy.ps1',
   'device_events\device_identity_required.ps1',
   'rulesets\db_ruleset_selection.ps1',
   'rulesets\simulation_no_persist.ps1',
