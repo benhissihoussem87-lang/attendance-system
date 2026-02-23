@@ -180,6 +180,7 @@ function validateDeviceEventsCsv(csvText, options = {}) {
   }
 
   const optional = [
+    'company_id',
     'device_uid',
     'vendor',
     'card_number',

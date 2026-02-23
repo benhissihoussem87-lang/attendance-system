@@ -4,6 +4,7 @@ const router = express.Router();
 const db = require('../db');
 const { invalidateAttendanceCache } = require('../services/cacheInvalidation');
 const { parseDeviceEventsCsv } = require('../services/deviceEventsCsvValidator');
+const { importDeviceEventsCsv } = require('../services/deviceEventsCsvImporter');
 const { mapAndValidateEvents } = require('../services/deviceEventIngestor');
 const { buildErrorIntelligence } = require('../services/csvErrorIntelligence');
 const { buildErrorsCsv } = require('../services/csvErrorExport');
@@ -77,6 +78,26 @@ function resolveCompanyId(req, body) {
   const headerId = typeof req.get('x-company-id') === 'string' ? req.get('x-company-id') : null;
 
   return bodyId || queryId || headerId || null;
+}
+
+function resolveImportCompanyId(req) {
+  const authCompanyId = (req.ctx && typeof req.ctx.company_id === 'string')
+    ? req.ctx.company_id.trim()
+    : '';
+  if (authCompanyId) {
+    return authCompanyId;
+  }
+
+  const allowFallback = toBool(process.env.ALLOW_TEST_ENDPOINTS) || !toBool(process.env.REQUIRE_AUTH);
+  if (!allowFallback) {
+    return '';
+  }
+
+  const fallback = resolveCompanyId(req, null);
+  if (typeof fallback !== 'string') {
+    return '';
+  }
+  return fallback.trim();
 }
 
 function inferCompanyIdFromRows(rows) {
@@ -393,19 +414,30 @@ router.post(
           }
         });
       }
-      const resolvedCompanyId = resolveCompanyId(req, null);
-      if (resolvedCompanyId && inferredCompany && inferredCompany.value && inferredCompany.value !== resolvedCompanyId) {
+      const effectiveCompanyId = resolveImportCompanyId(req);
+      if (!effectiveCompanyId) {
         return sendError(res, {
           status: 400,
           code: 'IMPORT_ERROR',
           message: 'Import error',
           details: {
             kind: 'import_error',
-            error: 'company_mismatch'
+            error: 'company_scope_required'
           }
         });
       }
-      const companyId = resolvedCompanyId || (inferredCompany && inferredCompany.value) || 'DEFAULT';
+      if (inferredCompany && inferredCompany.value && inferredCompany.value !== effectiveCompanyId) {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'company_id_mismatch'
+          }
+        });
+      }
+      const companyId = effectiveCompanyId;
 
       if (Array.isArray(validation.rows)) {
         for (const row of validation.rows) {
@@ -700,19 +732,30 @@ router.post(
           }
         });
       }
-      const resolvedCompanyId = resolveCompanyId(req, null);
-      if (resolvedCompanyId && inferredCompany && inferredCompany.value && inferredCompany.value !== resolvedCompanyId) {
+      const effectiveCompanyId = resolveImportCompanyId(req);
+      if (!effectiveCompanyId) {
         return sendError(res, {
           status: 400,
           code: 'IMPORT_ERROR',
           message: 'Import error',
           details: {
             kind: 'import_error',
-            error: 'company_mismatch'
+            error: 'company_scope_required'
           }
         });
       }
-      const companyId = resolvedCompanyId || (inferredCompany && inferredCompany.value) || 'DEFAULT';
+      if (inferredCompany && inferredCompany.value && inferredCompany.value !== effectiveCompanyId) {
+        return sendError(res, {
+          status: 400,
+          code: 'IMPORT_ERROR',
+          message: 'Import error',
+          details: {
+            kind: 'import_error',
+            error: 'company_id_mismatch'
+          }
+        });
+      }
+      const companyId = effectiveCompanyId;
 
     const identityByRow = new Map();
     if (Array.isArray(validationResult.rows)) {
@@ -755,378 +798,14 @@ router.post(
       }
     }
 
-    if (vendor === 'zkteco') {
-      const errors = validationResult.errors.slice(0, 200);
-      let inserted_rows = 0;
-      let skipped_rows = 0;
-      let failed_rows = validationResult.invalid_rows;
-      const first3Inserted = [];
-      const last3Inserted = [];
-
-      for (const row of validationResult.rows) {
-        if (!row.valid) {
-          continue;
-        }
-
-        const normalized = normalizeCanonicalEvent(row.data);
-        const identity = identityByRow.get(row.row_number);
-        if (identity) {
-          normalized.person_id = identity.resolvedPersonId;
-          normalized.raw_payload = buildIdentityPayload(normalized.raw_payload, identity);
-        }
-        const validation = validateCanonicalEvent(normalized);
-        if (!validation.ok) {
-          if (errors.length < 200) {
-            const details = validation.errors || [];
-            const message = details.length > 0
-              ? details.map(err => `${err.field}: ${err.message}`).join('; ')
-              : 'Invalid device event';
-            errors.push({
-              row_number: row.row_number,
-              code: 'INGEST_INVALID',
-              message
-            });
-          }
-          failed_rows += 1;
-          continue;
-        }
-        try {
-          normalized.device_uid = requireDeviceUid(normalized.device_uid);
-        } catch (err) {
-          if (errors.length < 200) {
-            errors.push({
-              row_number: row.row_number,
-              code: 'MISSING_DEVICE_UID',
-              message: 'device_uid is required'
-            });
-          }
-          failed_rows += 1;
-          continue;
-        }
-
-        const normalizedVendor = typeof normalized.vendor === 'string' ? normalized.vendor.trim() : '';
-        const autoVendor = normalizedVendor
-          ? normalizedVendor.toLowerCase()
-          : (typeof vendor === 'string' && vendor.trim() ? vendor.trim().toLowerCase() : null);
-        const autoMetadata = { source: 'ingest' };
-        if (autoVendor) {
-          autoMetadata.vendor = autoVendor;
-        }
-        await upsertDeviceMinimal(db, companyId, normalized.device_uid, {
-          provider: autoVendor,
-          metadata: autoMetadata
-        });
-        const values = [
-          companyId,
-          normalized.person_id,
-          normalized.event_time_utc,
-          normalized.direction,
-          normalized.vendor,
-          normalized.device_uid,
-          normalized.raw_payload
-        ];
-
-        let result;
-        try {
-          result = await db.query(
-            `
-            INSERT INTO device_events
-              (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-            VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
-            ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
-            RETURNING person_id, event_time_utc, direction, device_uid, vendor
-            `,
-            values
-          );
-        } catch (dbErr) {
-          const details = [];
-          if (dbErr && dbErr.code) {
-            details.push(`code=${dbErr.code}`);
-          }
-          if (dbErr && dbErr.message) {
-            const msg = String(dbErr.message);
-            details.push(`message=${msg.slice(0, 200)}`);
-          }
-          if (errors.length < 200) {
-            errors.push({
-              row_number: row.row_number,
-              code: 'DB_INSERT_FAILED',
-              message: details.length > 0
-                ? `Database insert failed (${details.join(', ')})`
-                : 'Database insert failed'
-            });
-          }
-          failed_rows += 1;
-          continue;
-        }
-
-        if (result.rowCount === 1) {
-          inserted_rows += 1;
-          try {
-            await invalidateAttendanceCache(db, normalized.person_id, normalized.event_time_utc, {
-              companyId
-            });
-          } catch (cacheErr) {
-            if (errors.length < 200) {
-              errors.push({
-                row_number: row.row_number,
-                code: 'CACHE_INVALIDATION_FAILED',
-                message: 'Cache invalidation failed'
-              });
-            }
-          }
-          const returnedRow = result.rows[0] || {};
-          const sampleItem = {
-            row_number: row.row_number,
-            person_id: returnedRow.person_id,
-            event_time_utc: returnedRow.event_time_utc,
-            direction: returnedRow.direction,
-            device_uid: returnedRow.device_uid,
-            vendor: returnedRow.vendor
-          };
-          if (first3Inserted.length < 3) {
-            first3Inserted.push(sampleItem);
-          }
-          last3Inserted.push(sampleItem);
-          if (last3Inserted.length > 3) {
-            last3Inserted.shift();
-          }
-        } else {
-          skipped_rows += 1;
-        }
-      }
-
-      emitAuditEvent({
-        actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
-        company_id: companyId,
-        role: req.ctx ? req.ctx.role : null,
-        action: 'device_events.import.commit',
-        target: req.originalUrl || req.path,
-        metadata: {
-          vendor,
-          total_rows: validationResult.total_rows,
-          valid_rows: validationResult.valid_rows,
-          invalid_rows: validationResult.invalid_rows,
-          inserted_rows,
-          skipped_rows,
-          failed_rows
-        }
-      });
-      return res.json({
-        system_version: SYSTEM_VERSION,
-        contract: CSV_CONTRACT,
-        import_version: CSV_IMPORT_VERSION,
-        total_rows: validationResult.total_rows,
-        valid_rows: validationResult.valid_rows,
-        invalid_rows: validationResult.invalid_rows,
-        inserted_rows,
-        skipped_rows,
-        failed_rows,
-        errors,
-        inserted_samples: {
-          first3: first3Inserted,
-          last3: last3Inserted
-        }
-      });
-    }
-
-    const errors = validationResult.errors.slice(0, 200);
-    let inserted_rows = 0;
-    let skipped_rows = 0;
-    let failed_rows = validationResult.invalid_rows;
-    const timeInterpretationEnabled = isTimeInterpretationEnabled();
-    const first3Inserted = [];
-    const last3Inserted = [];
-
-    for (const row of validationResult.rows) {
-      if (!row.valid) {
-        continue;
-      }
-
-      const data = row.data || {};
-      let eventTimeUtc = data.event_time;
-      let timeAudit = null;
-      if (timeInterpretationEnabled) {
-        try {
-          const interpreted = interpretEventTime({
-            event_time_raw: data.event_time,
-            company_timezone: COMPANY_TIMEZONE
-          });
-          eventTimeUtc = interpreted.event_time_utc;
-          timeAudit = interpreted.time_audit;
-        } catch (err) {
-          if (errors.length < 200) {
-            errors.push({
-              row_number: row.row_number,
-              code: 'TIME_INTERPRETATION_FAILED',
-              message: err.message || 'Time interpretation failed'
-            });
-          }
-          failed_rows += 1;
-          continue;
-        }
-      }
-      const rawPayload = {
-        source: 'csv_import'
-      };
-      if (data.card_number !== undefined) {
-        rawPayload.card_number = data.card_number;
-      }
-      if (data.employee_code !== undefined) {
-        rawPayload.employee_code = data.employee_code;
-      }
-      if (data.vendor !== undefined) {
-        rawPayload.vendor = data.vendor;
-      }
-      if (data.device_uid !== undefined) {
-        rawPayload.device_uid = data.device_uid;
-      }
-      if (data.raw_payload !== undefined) {
-        rawPayload.raw_payload = data.raw_payload;
-      }
-      if (timeInterpretationEnabled && timeAudit) {
-        rawPayload.time_interpretation = timeAudit;
-      }
-
-      const ingestInput = {
-        person_id: data.person_id,
-        event_time_utc: eventTimeUtc,
-        direction: data.direction,
-        vendor: data.vendor || null,
-        device_uid: data.device_uid ?? '',
-        raw_payload: rawPayload
-      };
-      const ingestResult = mapAndValidateEvents({
-        vendor: data.vendor || null,
-        rows: [ingestInput],
-        context: { vendor: data.vendor || null }
-      });
-      if (ingestResult.badRows.length > 0) {
-        if (errors.length < 200) {
-          const details = ingestResult.badRows[0].errors || [];
-          const message = details.length > 0
-            ? details.map(err => `${err.field}: ${err.message}`).join('; ')
-            : 'Invalid device event';
-          errors.push({
-            row_number: row.row_number,
-            code: 'INGEST_INVALID',
-            message
-          });
-        }
-        failed_rows += 1;
-        continue;
-      }
-      const canonical = ingestResult.okRows[0];
-      const identity = identityByRow.get(row.row_number);
-      if (identity) {
-        canonical.person_id = identity.resolvedPersonId;
-        canonical.raw_payload = buildIdentityPayload(canonical.raw_payload, identity);
-      }
-      try {
-        canonical.device_uid = requireDeviceUid(canonical.device_uid);
-      } catch (err) {
-        if (errors.length < 200) {
-          errors.push({
-            row_number: row.row_number,
-            code: 'MISSING_DEVICE_UID',
-            message: 'device_uid is required'
-          });
-        }
-        failed_rows += 1;
-        continue;
-      }
-
-      const canonicalVendor = typeof canonical.vendor === 'string' ? canonical.vendor.trim() : '';
-      const autoVendor = canonicalVendor
-        ? canonicalVendor.toLowerCase()
-        : (typeof vendor === 'string' && vendor.trim() ? vendor.trim().toLowerCase() : null);
-      const autoMetadata = { source: 'ingest' };
-      if (autoVendor) {
-        autoMetadata.vendor = autoVendor;
-      }
-      await upsertDeviceMinimal(db, companyId, canonical.device_uid, {
-        provider: autoVendor,
-        metadata: autoMetadata
-      });
-      const values = [
-        companyId,
-        canonical.person_id,
-        canonical.event_time_utc,
-        canonical.direction,
-        canonical.vendor,
-        canonical.device_uid,
-        canonical.raw_payload
-      ];
-
-      let result;
-      try {
-        result = await db.query(
-          `
-          INSERT INTO device_events
-            (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
-          ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
-          RETURNING person_id, event_time_utc, direction, device_uid, vendor
-          `,
-          values
-        );
-      } catch (dbErr) {
-        const details = [];
-        if (dbErr && dbErr.code) {
-          details.push(`code=${dbErr.code}`);
-        }
-        if (dbErr && dbErr.message) {
-          const msg = String(dbErr.message);
-          details.push(`message=${msg.slice(0, 200)}`);
-        }
-        if (errors.length < 200) {
-          errors.push({
-            row_number: row.row_number,
-            code: 'DB_INSERT_FAILED',
-            message: details.length > 0
-              ? `Database insert failed (${details.join(', ')})`
-              : 'Database insert failed'
-          });
-        }
-        failed_rows += 1;
-        continue;
-      }
-
-      if (result.rowCount === 1) {
-        inserted_rows += 1;
-        try {
-          await invalidateAttendanceCache(db, canonical.person_id, canonical.event_time_utc, {
-            companyId
-          });
-        } catch (cacheErr) {
-          if (errors.length < 200) {
-            errors.push({
-              row_number: row.row_number,
-              code: 'CACHE_INVALIDATION_FAILED',
-              message: 'Cache invalidation failed'
-            });
-          }
-        }
-        const returnedRow = result.rows[0] || {};
-        const sampleItem = {
-          row_number: row.row_number,
-          person_id: returnedRow.person_id,
-          event_time_utc: returnedRow.event_time_utc,
-          direction: returnedRow.direction,
-          device_uid: returnedRow.device_uid,
-          vendor: returnedRow.vendor
-        };
-        if (first3Inserted.length < 3) {
-          first3Inserted.push(sampleItem);
-        }
-        last3Inserted.push(sampleItem);
-        if (last3Inserted.length > 3) {
-          last3Inserted.shift();
-        }
-      } else {
-        skipped_rows += 1;
-      }
-    }
+    const commitResult = await importDeviceEventsCsv(db, csvText, companyId, {
+      ...options,
+      vendor,
+      validationResult,
+      identityByRow,
+      companyTimezone: COMPANY_TIMEZONE,
+      timeInterpretationEnabled: isTimeInterpretationEnabled()
+    });
 
     emitAuditEvent({
       actor_key_id: req.ctx ? req.ctx.key_id_or_prefix : null,
@@ -1136,29 +815,26 @@ router.post(
       target: req.originalUrl || req.path,
       metadata: {
         vendor,
-        total_rows: validationResult.total_rows,
-        valid_rows: validationResult.valid_rows,
-        invalid_rows: validationResult.invalid_rows,
-        inserted_rows,
-        skipped_rows,
-        failed_rows
+        total_rows: commitResult.total_rows,
+        valid_rows: commitResult.valid_rows,
+        invalid_rows: commitResult.invalid_rows,
+        inserted_rows: commitResult.inserted_rows,
+        skipped_rows: commitResult.skipped_rows,
+        failed_rows: commitResult.failed_rows
       }
     });
     return res.json({
         system_version: SYSTEM_VERSION,
         contract: CSV_CONTRACT,
         import_version: CSV_IMPORT_VERSION,
-        total_rows: validationResult.total_rows,
-        valid_rows: validationResult.valid_rows,
-        invalid_rows: validationResult.invalid_rows,
-        inserted_rows,
-        skipped_rows,
-        failed_rows,
-        errors,
-        inserted_samples: {
-          first3: first3Inserted,
-          last3: last3Inserted
-        }
+        total_rows: commitResult.total_rows,
+        valid_rows: commitResult.valid_rows,
+        invalid_rows: commitResult.invalid_rows,
+        inserted_rows: commitResult.inserted_rows,
+        skipped_rows: commitResult.skipped_rows,
+        failed_rows: commitResult.failed_rows,
+        errors: commitResult.errors,
+        inserted_samples: commitResult.inserted_samples
       });
     } catch (err) {
       console.error(err);

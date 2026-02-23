@@ -173,6 +173,8 @@ $scriptList += @(
   'csv\csv_generic_punchlog.ps1',
   'csv\csv_invalid.ps1',
   'csv\csv_dedup.ps1',
+  'device_events\csv_company_id_non_authoritative.ps1',
+  'device_events\csv_company_id_non_authoritative_commit.ps1',
   'device_events\vendor_csv_matrix.ps1',
   'device_events\vendor_csv_vendors.ps1',
   'device_events\vendor_csv_anviz.ps1',

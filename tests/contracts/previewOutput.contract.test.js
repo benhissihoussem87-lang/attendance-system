@@ -260,7 +260,7 @@ async function testCsvErrorEnvelope() {
 
   const previewEmpty = await requestJson({
     method: 'POST',
-    url: `${baseUrl}/api/device-events/import/preview`,
+    url: `${baseUrl}/api/device-events/import/preview?company_id=DEFAULT`,
     headers: { 'content-type': 'text/plain' },
     body: ''
   });
@@ -281,7 +281,7 @@ async function testCsvErrorEnvelope() {
 
   const previewUnknownVendor = await requestJson({
     method: 'POST',
-    url: `${baseUrl}/api/device-events/import/preview`,
+    url: `${baseUrl}/api/device-events/import/preview?company_id=DEFAULT`,
     headers: { 'content-type': 'text/plain', 'x-vendor': 'unknown_vendor_test' },
     body: 'person_id,event_time,direction\np1,2026-01-07 08:00:00,IN'
   });
@@ -306,7 +306,7 @@ async function testCsvErrorEnvelope() {
 
   const commitMissingColumns = await requestJson({
     method: 'POST',
-    url: `${baseUrl}/api/device-events/import/commit`,
+    url: `${baseUrl}/api/device-events/import/commit?company_id=DEFAULT`,
     headers: { 'content-type': 'text/plain' },
     body: 'person_id,event_time\np1,2026-01-07 08:00:00'
   });
