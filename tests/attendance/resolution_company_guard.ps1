@@ -241,12 +241,37 @@ try {
     throw 'resolution guard: expected successful in-scope resolution create'
   }
 
-  $getMismatchStatus = Invoke-StatusCode `
-    -Method 'GET' `
-    -Uri "$baseUrl/api/attendance/$attendanceDayId/resolutions?company_id=OTHER" `
-    -Headers $operatorHeaders
-  if ($getMismatchStatus -ne 404) {
-    throw "resolution guard: expected 404 for GET company mismatch, got $getMismatchStatus"
+  if ($requireAuth) {
+    try {
+      Invoke-RestMethod "$baseUrl/api/attendance/$attendanceDayId/resolutions?company_id=OTHER" `
+        -Headers $operatorHeaders | Out-Null
+      throw 'resolution guard: expected authz company mismatch for GET'
+    } catch {
+      $info = Get-HttpErrorInfo $_
+      if ($info.status -ne 403) {
+        throw ("resolution guard: expected HTTP 403 for GET company mismatch, got {0}. body={1}" -f $info.status, $info.text)
+      }
+      if (-not $info.json) {
+        throw ("resolution guard: expected JSON error body for GET mismatch. raw={0}" -f $info.text)
+      }
+      if ($info.json.code -ne 'FORBIDDEN') {
+        throw ("resolution guard: expected FORBIDDEN code for GET mismatch, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'authz') {
+        throw 'resolution guard: expected details.kind=authz for GET mismatch'
+      }
+      if ($info.json.details.error -ne 'company_mismatch') {
+        throw ("resolution guard: expected details.error=company_mismatch for GET mismatch, got {0}" -f $info.json.details.error)
+      }
+    }
+  } else {
+    $getMismatchStatus = Invoke-StatusCode `
+      -Method 'GET' `
+      -Uri "$baseUrl/api/attendance/$attendanceDayId/resolutions?company_id=OTHER" `
+      -Headers $operatorHeaders
+    if ($getMismatchStatus -ne 404) {
+      throw "resolution guard: expected 404 for GET company mismatch, got $getMismatchStatus"
+    }
   }
 
   $historyRaw = Invoke-RestMethod "$baseUrl/api/attendance/$attendanceDayId/resolutions?company_id=DEFAULT" -Headers $operatorHeaders
