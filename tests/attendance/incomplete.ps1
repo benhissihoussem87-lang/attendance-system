@@ -3,6 +3,36 @@ $ErrorActionPreference = 'Stop'
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-09' }
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$adminHeaders = @{}
+$operatorHeaders = @{}
+if ($requireAuth) {
+  $adminKey = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  $opKey = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $adminKey -and -not $opKey) {
+    Write-Host 'SKIP: attendance incomplete (TEST_API_KEY_* missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  if ($adminKey) { $adminHeaders['x-api-key'] = $adminKey }
+  if ($opKey) {
+    $operatorHeaders['x-api-key'] = $opKey
+  } else {
+    $operatorHeaders = @{} + $adminHeaders
+  }
+}
+$opsHeaders = if ($adminHeaders.Count -gt 0) { @{} + $adminHeaders } else { @{} + $operatorHeaders }
+
 function Unwrap-Value {
   param($res)
   if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') {
@@ -12,9 +42,52 @@ function Unwrap-Value {
 }
 
 try {
+  $mode = $null
+  try {
+    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers $opsHeaders
+  } catch {
+    $status = $null
+    $text = ''
+    try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+    if (-not $text) {
+      try {
+        if ($_.Exception.Response -and $_.Exception.Response.Content) {
+          $text = $_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        }
+      } catch {}
+    }
+    if (-not $text) {
+      try {
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $text = $_.ErrorDetails.Message }
+      } catch {}
+    }
+    $textLower = if ($text) { $text.ToString().Trim().ToLower() } else { '' }
+    $errorValue = ''
+    if ($text) {
+      try {
+        $json = $text | ConvertFrom-Json -ErrorAction Stop
+        if ($json -and $json.details -and $json.details.error) {
+          $errorValue = $json.details.error.ToString().Trim().ToLower()
+        } elseif ($json -and $json.error) {
+          $errorValue = $json.error.ToString().Trim().ToLower()
+        }
+      } catch {}
+    }
+    if ($status -eq 404 -or $errorValue -eq 'not_found' -or $textLower.Contains('allow_test_endpoints')) {
+      Write-Host 'SKIP: attendance incomplete (test endpoints disabled)'
+      exit 0
+    }
+    throw
+  }
+  if (-not $mode -or -not $mode.allow_test_endpoints) {
+    Write-Host 'SKIP: attendance incomplete (test endpoints disabled)'
+    exit 0
+  }
+
   # CASE 1: IN only
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
@@ -28,7 +101,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $inOnlyRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1"
+  $inOnlyRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1" -Headers $operatorHeaders
   $inOnly = Unwrap-Value $inOnlyRaw
   $inOnlyArr = @($inOnly)
   if ($inOnlyArr[0].status -ne 'INCOMPLETE') {
@@ -44,6 +117,7 @@ try {
   # CASE 2: OUT only (invalid sequence)
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
@@ -57,7 +131,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $outOnlyRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1"
+  $outOnlyRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1" -Headers $operatorHeaders
   $outOnly = Unwrap-Value $outOnlyRaw
   $outOnlyArr = @($outOnly)
   if ($outOnlyArr[0].status -ne 'INVALID') {
@@ -73,6 +147,7 @@ try {
   # CASE 3: repeated direction (invalid sequence)
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
@@ -87,7 +162,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $repeatRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1"
+  $repeatRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=p1" -Headers $operatorHeaders
   $repeat = Unwrap-Value $repeatRaw
   $repeatArr = @($repeat)
   if ($repeatArr[0].status -ne 'INVALID') {
