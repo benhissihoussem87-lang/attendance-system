@@ -13,6 +13,17 @@ $encodedPersonId1 = [uri]::EscapeDataString($personId1)
 $encodedPersonId2 = [uri]::EscapeDataString($personId2)
 $encodedIdentifierValue = [uri]::EscapeDataString($identifierValue)
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
 function Get-HttpErrorInfo {
   param($err)
 
@@ -61,9 +72,24 @@ function Get-HttpErrorInfo {
   }
 }
 
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$authHeaders = @{}
+if ($requireAuth) {
+  $k = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $k) {
+    $k = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  }
+  if (-not $k) {
+    Write-Host 'SKIP: identity mappings (TEST_API_KEY_OPERATOR/ADMIN missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  $authHeaders['x-api-key'] = $k
+}
+
 try {
   Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId1, 'DEFAULT') `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       metadata = @{}
@@ -71,6 +97,7 @@ try {
 
   $create = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       provider = 'zkteco'
@@ -82,11 +109,13 @@ try {
 
   if ($create.person_id -ne $personId1) { throw 'expected person_id p1' }
 
-  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=$encodedIdentifierValue"
+  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=$encodedIdentifierValue" `
+    -Headers $authHeaders
   if ($lookup.person_id -ne $personId1) { throw 'expected lookup person_id p1' }
 
   Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId2, 'DEFAULT') `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       metadata = @{}
@@ -95,6 +124,7 @@ try {
   try {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
       -Method Put `
+      -Headers $authHeaders `
       -ContentType 'application/json' `
       -Body (@{
         provider = 'zkteco'
@@ -123,6 +153,7 @@ try {
   try {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
       -Method Put `
+      -Headers $authHeaders `
       -ContentType 'application/json' `
       -Body (@{
         company_id = 'OTHER'
@@ -152,7 +183,8 @@ try {
     }
   }
 
-  $list = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT&provider=zkteco"
+  $list = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT&provider=zkteco" `
+    -Headers $authHeaders
   if (-not $list -or $list.Count -lt 1) { throw 'expected at least one mapping' }
 
   Write-Host 'PASS: identity mappings'
