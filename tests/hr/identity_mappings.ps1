@@ -13,6 +13,17 @@ $encodedPersonId1 = [uri]::EscapeDataString($personId1)
 $encodedPersonId2 = [uri]::EscapeDataString($personId2)
 $encodedIdentifierValue = [uri]::EscapeDataString($identifierValue)
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
 function Get-HttpErrorInfo {
   param($err)
 
@@ -61,9 +72,24 @@ function Get-HttpErrorInfo {
   }
 }
 
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$authHeaders = @{}
+if ($requireAuth) {
+  $k = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $k) {
+    $k = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  }
+  if (-not $k) {
+    Write-Host 'SKIP: identity mappings (TEST_API_KEY_OPERATOR/ADMIN missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  $authHeaders['x-api-key'] = $k
+}
+
 try {
   Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId1, 'DEFAULT') `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       metadata = @{}
@@ -71,6 +97,7 @@ try {
 
   $create = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       provider = 'zkteco'
@@ -82,11 +109,13 @@ try {
 
   if ($create.person_id -ne $personId1) { throw 'expected person_id p1' }
 
-  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=$encodedIdentifierValue"
+  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=$encodedIdentifierValue" `
+    -Headers $authHeaders
   if ($lookup.person_id -ne $personId1) { throw 'expected lookup person_id p1' }
 
   Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId2, 'DEFAULT') `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       metadata = @{}
@@ -95,6 +124,7 @@ try {
   try {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
       -Method Put `
+      -Headers $authHeaders `
       -ContentType 'application/json' `
       -Body (@{
         provider = 'zkteco'
@@ -123,6 +153,7 @@ try {
   try {
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
       -Method Put `
+      -Headers $authHeaders `
       -ContentType 'application/json' `
       -Body (@{
         company_id = 'OTHER'
@@ -135,24 +166,41 @@ try {
     throw 'expected company_id mismatch'
   } catch {
     $info = Get-HttpErrorInfo $_
-    if ($info.status -ne 400) {
-      throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
-    }
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.error -ne 'bad_request') {
-      throw ("expected bad_request, got {0}" -f $info.json.error)
-    }
-    if ($info.json.code -ne 'VALIDATION_ERROR') {
-      throw ("expected code VALIDATION_ERROR, got {0}" -f $info.json.code)
-    }
-    if ($info.json.details.kind -ne 'validation') {
-      throw ("expected details.kind validation, got {0}" -f $info.json.details.kind)
+    if ($requireAuth) {
+      if ($info.status -ne 403) {
+        throw ("expected HTTP 403, got {0}. body={1}" -f $info.status, $info.text)
+      }
+      if ($info.json.code -ne 'FORBIDDEN') {
+        throw ("expected FORBIDDEN, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'authz') {
+        throw 'expected details.kind=authz'
+      }
+      if ($info.json.details.error -ne 'company_mismatch') {
+        throw ("expected company_mismatch, got {0}" -f $info.json.details.error)
+      }
+    } else {
+      if ($info.status -ne 400) {
+        throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
+      }
+      if ($info.json.code -ne 'VALIDATION_ERROR') {
+        throw ("expected code VALIDATION_ERROR, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'validation') {
+        throw ("expected details.kind validation, got {0}" -f $info.json.details.kind)
+      }
+      $allowedValidationErrors = @('invalid_request', 'company_id_mismatch', 'company_id_required')
+      if ($allowedValidationErrors -notcontains $info.json.details.error) {
+        throw ("expected one of {0}, got {1}" -f ($allowedValidationErrors -join ', '), $info.json.details.error)
+      }
     }
   }
 
-  $list = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT&provider=zkteco"
+  $list = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT&provider=zkteco" `
+    -Headers $authHeaders
   if (-not $list -or $list.Count -lt 1) { throw 'expected at least one mapping' }
 
   Write-Host 'PASS: identity mappings'

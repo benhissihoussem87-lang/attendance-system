@@ -12,17 +12,93 @@ $fixturePath = Join-Path $PSScriptRoot '..\fixtures\generic_punchlog.csv'
 $csv = Get-Content -Raw $fixturePath
 $csv = $csv -replace '(?m)^p1,', "$personId,"
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$adminHeaders = @{}
+$operatorHeaders = @{}
+$opsHeaders = @{}
+if ($requireAuth) {
+  $adminKey = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  $operatorKey = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $adminKey -and -not $operatorKey) {
+    Write-Host 'SKIP: csv_generic_punchlog (TEST_API_KEY_* missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  if ($adminKey) { $adminHeaders['x-api-key'] = $adminKey }
+  if ($operatorKey) {
+    $operatorHeaders['x-api-key'] = $operatorKey
+  } elseif ($adminKey) {
+    $operatorHeaders['x-api-key'] = $adminKey
+  }
+  if ($adminHeaders.Count -gt 0) {
+    $opsHeaders = @{} + $adminHeaders
+  } else {
+    $opsHeaders = @{} + $operatorHeaders
+  }
+}
+
 try {
   $mode = $null
   try {
-    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers $opsHeaders
   } catch {
-    $mode = $null
+    $status = $null
+    $text = ''
+    try {
+      $status = [int]$_.Exception.Response.StatusCode
+    } catch {}
+    if (-not $text) {
+      try {
+        if ($_.Exception.Response -and $_.Exception.Response.Content) {
+          $text = $_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        }
+      } catch {}
+    }
+    if (-not $text) {
+      try {
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+          $text = $_.ErrorDetails.Message
+        }
+      } catch {}
+    }
+    $textLower = if ($text) { $text.ToString().Trim().ToLower() } else { '' }
+    $errorValue = ''
+    if ($text) {
+      try {
+        $json = $text | ConvertFrom-Json -ErrorAction Stop
+        if ($json -and $json.details -and $json.details.error) {
+          $errorValue = $json.details.error.ToString().Trim().ToLower()
+        } elseif ($json -and $json.error) {
+          $errorValue = $json.error.ToString().Trim().ToLower()
+        }
+      } catch {}
+    }
+    if ($status -eq 404 -or $errorValue -eq 'not_found' -or $textLower.Contains('allow_test_endpoints')) {
+      Write-Host 'SKIP: csv_generic_punchlog (test endpoints disabled)'
+      exit 0
+    }
+    throw
+  }
+
+  if (-not $mode -or -not $mode.allow_test_endpoints) {
+    Write-Host 'SKIP: csv_generic_punchlog (test endpoints disabled)'
+    exit 0
   }
 
   if ($mode -and $mode.require_identity_mappings -eq $true) {
     Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
       -Method Put `
+      -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
         metadata = @{}
@@ -30,6 +106,7 @@ try {
 
     Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
       -Method Put `
+      -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
         provider = 'generic_punchlog'
@@ -41,9 +118,11 @@ try {
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
+  $previewHeaders = @{} + $operatorHeaders
+  $previewHeaders['x-vendor'] = 'generic_punchlog'
   $res = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
     -Method Post `
-    -Headers @{ 'x-vendor' = 'generic_punchlog' } `
+    -Headers $previewHeaders `
     -ContentType 'text/plain' `
     -Body $csv
 
@@ -58,9 +137,11 @@ try {
 employee_id,timestamp,event,device_serial
 p_missing,2026-01-07 09:00:00,IN,SN-XYZ
 "@
+    $missingHeaders = @{} + $operatorHeaders
+    $missingHeaders['x-vendor'] = 'generic_punchlog'
     $missing = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
       -Method Post `
-      -Headers @{ 'x-vendor' = 'generic_punchlog' } `
+      -Headers $missingHeaders `
       -ContentType 'text/plain' `
       -Body $csvMissing
     $hasIdentityError = $false

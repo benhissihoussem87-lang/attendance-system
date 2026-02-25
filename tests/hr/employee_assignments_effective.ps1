@@ -6,6 +6,37 @@ if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
 if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $runSuffix = "${safeRunId}_hrassign"
+
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$adminHeaders = @{}
+$operatorHeaders = @{}
+if ($requireAuth) {
+  $adminKey = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  $opKey = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $adminKey -and -not $opKey) {
+    Write-Host 'SKIP: employee assignments effective (TEST_API_KEY_* missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  if ($adminKey) { $adminHeaders['x-api-key'] = $adminKey }
+  if ($opKey) {
+    $operatorHeaders['x-api-key'] = $opKey
+  } else {
+    $operatorHeaders = @{} + $adminHeaders
+  }
+}
+$opsHeaders = if ($adminHeaders.Count -gt 0) { @{} + $adminHeaders } else { @{} + $operatorHeaders }
+
 $personId = "ea_$runSuffix"
 $encodedPersonId = [uri]::EscapeDataString($personId)
 $dateWithin = '2026-01-15'
@@ -20,7 +51,47 @@ function Unwrap-Value {
 }
 
 try {
-  $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  $mode = $null
+  try {
+    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers $opsHeaders
+  } catch {
+    $status = $null
+    $text = ''
+    try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+    if (-not $text) {
+      try {
+        if ($_.Exception.Response -and $_.Exception.Response.Content) {
+          $text = $_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        }
+      } catch {}
+    }
+    if (-not $text) {
+      try {
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $text = $_.ErrorDetails.Message }
+      } catch {}
+    }
+    $textLower = if ($text) { $text.ToString().Trim().ToLower() } else { '' }
+    $errorValue = ''
+    if ($text) {
+      try {
+        $json = $text | ConvertFrom-Json -ErrorAction Stop
+        if ($json -and $json.details -and $json.details.error) {
+          $errorValue = $json.details.error.ToString().Trim().ToLower()
+        } elseif ($json -and $json.error) {
+          $errorValue = $json.error.ToString().Trim().ToLower()
+        }
+      } catch {}
+    }
+    if ($status -eq 404 -or $errorValue -eq 'not_found' -or $textLower.Contains('allow_test_endpoints')) {
+      Write-Host 'SKIP: employee assignments effective (test endpoints disabled)'
+      exit 0
+    }
+    throw
+  }
+  if (-not $mode -or -not $mode.allow_test_endpoints) {
+    Write-Host 'SKIP: employee assignments effective (test endpoints disabled)'
+    exit 0
+  }
   if (-not $mode.use_employee_assignments) {
     Write-Host 'FAIL: use_employee_assignments not enabled'
     exit 1
@@ -37,6 +108,7 @@ try {
 
   $seedA = Invoke-RestMethod "$baseUrl/api/ops/test/seed-ruleset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       name = 'assign-rule-A'
@@ -48,6 +120,7 @@ try {
 
   $seedB = Invoke-RestMethod "$baseUrl/api/ops/test/seed-ruleset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       name = 'assign-rule-B'
@@ -59,19 +132,21 @@ try {
 
   Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
     -Method Put `
+    -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
       default_rule_set_id = $ruleA
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT"
+  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" -Headers $operatorHeaders
   if ($employee.default_rule_set_id -ne $ruleA) {
     throw 'expected employee default_rule_set_id to match rule A'
   }
 
   Invoke-RestMethod "$baseUrl/api/employee-assignments?company_id=DEFAULT" `
     -Method Put `
+    -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
       person_id = $personId
@@ -83,6 +158,7 @@ try {
 
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
@@ -97,7 +173,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $withinRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateWithin&person_id=$personId&company_id=DEFAULT"
+  $withinRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateWithin&person_id=$personId&company_id=DEFAULT" -Headers $operatorHeaders
   $within = Unwrap-Value $withinRaw
   $withinArr = @($within)
   if (-not $withinArr -or $withinArr.Count -eq 0) { throw 'no attendance data returned for within date' }
@@ -123,6 +199,7 @@ try {
 
   Invoke-RestMethod "$baseUrl/api/ops/test/reset" `
     -Method Post `
+    -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
       company_id = 'DEFAULT'
@@ -137,7 +214,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $beforeRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateBefore&person_id=$personId&company_id=DEFAULT"
+  $beforeRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateBefore&person_id=$personId&company_id=DEFAULT" -Headers $operatorHeaders
   $before = Unwrap-Value $beforeRaw
   $beforeArr = @($before)
   if (-not $beforeArr -or $beforeArr.Count -eq 0) { throw 'no attendance data returned for before date' }

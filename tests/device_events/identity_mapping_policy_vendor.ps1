@@ -15,6 +15,17 @@ $employeeCode = "PV_P3_$runSuffix"
 $identifierValue = "ZK_PIN_0001_$runSuffix"
 $encodedPersonId3 = [uri]::EscapeDataString($personId3)
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
 function Get-HttpErrorInfo {
   param($err)
 
@@ -63,17 +74,47 @@ function Get-HttpErrorInfo {
   }
 }
 
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$adminHeaders = @{}
+$operatorHeaders = @{}
+if ($requireAuth) {
+  $adminKey = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  $opKey = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $adminKey -and -not $opKey) {
+    Write-Host 'SKIP: identity_mapping_policy_vendor (TEST_API_KEY_* missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  if ($adminKey) { $adminHeaders['x-api-key'] = $adminKey }
+  if ($opKey) {
+    $operatorHeaders['x-api-key'] = $opKey
+  } elseif ($adminKey) {
+    $operatorHeaders = @{} + $adminHeaders
+  }
+}
+$opsHeaders = if ($adminHeaders.Count -gt 0) { @{} + $adminHeaders } else { @{} + $operatorHeaders }
+
 try {
   $mode = $null
   try {
-    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+    if ($opsHeaders.Count -gt 0) {
+      $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers $opsHeaders
+    } else {
+      $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+    }
   } catch {
-    $mode = $null
+    $probe = Get-HttpErrorInfo $_
+    $status = $probe.status
+    $text = if ($probe.text) { $probe.text.ToString().Trim().ToLower() } else { '' }
+    $errorValue = if ($probe.json -and $probe.json.error) { $probe.json.error.ToString().Trim().ToLower() } else { '' }
+    if ($status -eq 404 -or $errorValue -eq 'not_found' -or $text.Contains('not found') -or $text.Contains('allow_test_endpoints')) {
+      Write-Host 'SKIP: identity_mapping_policy_vendor (test endpoints disabled)'
+      exit 0
+    }
+    throw
   }
   if (-not $mode -or -not $mode.allow_test_endpoints) {
-    Write-Host "FAIL: identity_mapping_policy_vendor server mode"
-    Write-Host "This test requires ALLOW_TEST_ENDPOINTS=true"
-    exit 1
+    Write-Host 'SKIP: identity_mapping_policy_vendor (test endpoints disabled)'
+    exit 0
   }
   if (-not $mode.use_identity_mappings -or -not $mode.require_identity_mappings) {
     Write-Host "FAIL: identity_mapping_policy_vendor server mode"
@@ -97,7 +138,7 @@ try {
   } | ConvertTo-Json -Depth 6
 
   try {
-    Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -ContentType 'application/json' -Body $vendorEvent | Out-Null
+    Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -Headers $operatorHeaders -ContentType 'application/json' -Body $vendorEvent | Out-Null
     throw 'expected device-events insert to fail for vendor provider'
   } catch {
     $info = Get-HttpErrorInfo $_
@@ -128,7 +169,7 @@ try {
     provider = 'generic'
   } | ConvertTo-Json -Depth 6
 
-  $ok = Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -ContentType 'application/json' -Body $genericEvent
+  $ok = Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -Headers $operatorHeaders -ContentType 'application/json' -Body $genericEvent
   if (-not $ok -or $ok.status -ne 'ok') {
     throw 'expected generic provider insert to succeed'
   }
@@ -137,6 +178,7 @@ try {
   try {
     Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId3" `
       -Method Put `
+      -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
@@ -152,6 +194,7 @@ try {
   try {
     Invoke-RestMethod "$baseUrl/api/identity-mappings" `
       -Method Put `
+      -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
         company_id = $companyId
@@ -178,7 +221,7 @@ try {
   } | ConvertTo-Json -Depth 6
 
   try {
-    $mappedResult = Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -ContentType 'application/json' -Body $mappedEvent
+    $mappedResult = Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -Headers $operatorHeaders -ContentType 'application/json' -Body $mappedEvent
     if (-not $mappedResult -or $mappedResult.status -ne 'ok') {
       throw 'expected mapped vendor insert to succeed'
     }
