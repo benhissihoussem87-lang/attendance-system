@@ -166,20 +166,36 @@ try {
     throw 'expected company_id mismatch'
   } catch {
     $info = Get-HttpErrorInfo $_
-    if ($info.status -ne 400) {
-      throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
-    }
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.error -ne 'bad_request') {
-      throw ("expected bad_request, got {0}" -f $info.json.error)
-    }
-    if ($info.json.code -ne 'VALIDATION_ERROR') {
-      throw ("expected code VALIDATION_ERROR, got {0}" -f $info.json.code)
-    }
-    if ($info.json.details.kind -ne 'validation') {
-      throw ("expected details.kind validation, got {0}" -f $info.json.details.kind)
+    if ($requireAuth) {
+      if ($info.status -ne 403) {
+        throw ("expected HTTP 403, got {0}. body={1}" -f $info.status, $info.text)
+      }
+      if ($info.json.code -ne 'FORBIDDEN') {
+        throw ("expected FORBIDDEN, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'authz') {
+        throw 'expected details.kind=authz'
+      }
+      if ($info.json.details.error -ne 'company_mismatch') {
+        throw ("expected company_mismatch, got {0}" -f $info.json.details.error)
+      }
+    } else {
+      if ($info.status -ne 400) {
+        throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
+      }
+      if ($info.json.code -ne 'VALIDATION_ERROR') {
+        throw ("expected code VALIDATION_ERROR, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'validation') {
+        throw ("expected details.kind validation, got {0}" -f $info.json.details.kind)
+      }
+      $allowedValidationErrors = @('invalid_request', 'company_id_mismatch', 'company_id_required')
+      if ($allowedValidationErrors -notcontains $info.json.details.error) {
+        throw ("expected one of {0}, got {1}" -f ($allowedValidationErrors -join ', '), $info.json.details.error)
+      }
     }
   }
 
