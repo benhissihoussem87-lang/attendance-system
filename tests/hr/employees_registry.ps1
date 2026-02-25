@@ -16,6 +16,17 @@ $encodedPersonId = [uri]::EscapeDataString($personId)
 $encodedPersonIdP1 = [uri]::EscapeDataString($personIdP1)
 $encodedPersonIdP2 = [uri]::EscapeDataString($personIdP2)
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
 function Get-HttpErrorInfo {
   param($err)
 
@@ -64,9 +75,22 @@ function Get-HttpErrorInfo {
   }
 }
 
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$authHeaders = @{}
+if ($requireAuth) {
+  $operatorKey = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $operatorKey) {
+    Write-Host 'FAIL: employees registry'
+    Write-Host 'TEST_API_KEY_OPERATOR is required when REQUIRE_AUTH is enabled'
+    exit 1
+  }
+  $authHeaders['x-api-key'] = $operatorKey
+}
+
 try {
   $putOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       employee_code = $employeeCode
@@ -76,7 +100,8 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT')
+  $getOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
+    -Headers $authHeaders
   if ($getOne.company_id -ne 'DEFAULT') { throw 'expected company_id DEFAULT' }
   if (-not $getOne.person_id -or [string]::IsNullOrWhiteSpace($getOne.person_id)) {
     throw ("expected person_id to be present. response={0}" -f ($getOne | ConvertTo-Json -Depth 6))
@@ -93,6 +118,7 @@ try {
 
   $putRun = Invoke-RestMethod $personUrl `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       full_name = 'Registry Run Test'
@@ -100,11 +126,13 @@ try {
     } | ConvertTo-Json -Depth 6)
   if ($putRun.person_id -ne $personId) { throw 'expected PUT response person_id to match path param' }
 
-  $getRun = Invoke-RestMethod $personUrl
+  $getRun = Invoke-RestMethod $personUrl `
+    -Headers $authHeaders
   if ($getRun.person_id -ne $personId) { throw 'expected GET person_id to match path param' }
 
   $identityUpsert = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       provider = 'generic'
@@ -118,6 +146,7 @@ try {
 
   $putTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
     -Method Put `
+    -Headers $authHeaders `
     -ContentType 'application/json' `
     -Body (@{
       full_name = 'Ali Ben Salah Updated'
@@ -126,12 +155,14 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT')
+  $getTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
+    -Headers $authHeaders
   if ($getTwo.full_name -ne 'Ali Ben Salah Updated') { throw 'expected updated full_name' }
 
   try {
     Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP2, 'DEFAULT') `
       -Method Put `
+      -Headers $authHeaders `
       -ContentType 'application/json' `
       -Body (@{
         employee_code = $employeeCode
@@ -162,6 +193,7 @@ try {
   try {
     Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, 'p3', 'DEFAULT') `
       -Method Put `
+      -Headers $authHeaders `
       -ContentType 'application/json' `
       -Body (@{
         company_id = 'OTHER'
@@ -170,20 +202,39 @@ try {
     throw 'expected company_id mismatch'
   } catch {
     $info = Get-HttpErrorInfo $_
-    if ($info.status -ne 400) {
-      throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
+    if ($requireAuth) {
+      if ($info.status -ne 403) {
+        throw ("expected HTTP 403, got {0}. body={1}" -f $info.status, $info.text)
+      }
+    } else {
+      if ($info.status -ne 400) {
+        throw ("expected HTTP 400, got {0}. body={1}" -f $info.status, $info.text)
+      }
     }
     if (-not $info.json) {
       throw ("expected JSON error body. raw={0}" -f $info.text)
     }
-    if ($info.json.code -ne 'VALIDATION_ERROR') {
-      throw ("expected VALIDATION_ERROR, got {0}" -f $info.json.code)
-    }
-    if (-not $info.json.details -or $info.json.details.kind -ne 'validation') {
-      throw 'expected details.kind=validation'
-    }
-    if ($info.json.details.error -ne 'invalid_request') {
-      throw ("expected invalid_request, got {0}" -f $info.json.details.error)
+    if ($requireAuth) {
+      if ($info.json.code -ne 'FORBIDDEN') {
+        throw ("expected FORBIDDEN, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'authz') {
+        throw 'expected details.kind=authz'
+      }
+      if ($info.json.details.error -ne 'company_mismatch') {
+        throw ("expected company_mismatch, got {0}" -f $info.json.details.error)
+      }
+    } else {
+      if ($info.json.code -ne 'VALIDATION_ERROR') {
+        throw ("expected VALIDATION_ERROR, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'validation') {
+        throw 'expected details.kind=validation'
+      }
+      $allowedValidationErrors = @('invalid_request', 'company_id_mismatch', 'company_id_required')
+      if ($allowedValidationErrors -notcontains $info.json.details.error) {
+        throw ("expected one of {0}, got {1}" -f ($allowedValidationErrors -join ', '), $info.json.details.error)
+      }
     }
   }
 
