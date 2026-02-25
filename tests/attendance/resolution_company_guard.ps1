@@ -64,6 +64,54 @@ function Invoke-StatusCode {
   }
 }
 
+function Get-HttpErrorInfo {
+  param($err)
+
+  $status = $null
+  $text = $null
+
+  try {
+    $resp = $err.Exception.Response
+    if ($resp -is [System.Net.HttpWebResponse]) {
+      $status = [int]$resp.StatusCode
+      $stream = $resp.GetResponseStream()
+      if ($stream) {
+        $reader = New-Object System.IO.StreamReader($stream)
+        $text = $reader.ReadToEnd()
+      }
+    }
+  } catch {}
+
+  if (-not $text) {
+    try {
+      $resp2 = $err.Exception.Response
+      if ($resp2 -and $resp2.Content) {
+        $status = [int]$resp2.StatusCode
+        $text = $resp2.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      }
+    } catch {}
+  }
+
+  if (-not $text) {
+    try {
+      if ($err.ErrorDetails -and $err.ErrorDetails.Message) {
+        $text = $err.ErrorDetails.Message
+      }
+    } catch {}
+  }
+
+  $json = $null
+  if ($text) {
+    try { $json = $text | ConvertFrom-Json -ErrorAction Stop } catch { $json = $null }
+  }
+
+  return @{
+    status = $status
+    text   = $text
+    json   = $json
+  }
+}
+
 try {
   $mode = $null
   try {
@@ -140,13 +188,41 @@ try {
     reason_code = 'TENANT_SCOPE'
   } | ConvertTo-Json -Depth 6
 
-  $postMismatchStatus = Invoke-StatusCode `
-    -Method 'POST' `
-    -Uri "$baseUrl/api/attendance/$attendanceDayId/resolutions" `
-    -Body $mismatchBody `
-    -Headers $operatorHeaders
-  if ($postMismatchStatus -ne 404) {
-    throw "resolution guard: expected 404 for POST company mismatch, got $postMismatchStatus"
+  if ($requireAuth) {
+    try {
+      Invoke-RestMethod "$baseUrl/api/attendance/$attendanceDayId/resolutions" `
+        -Method Post `
+        -Headers $operatorHeaders `
+        -ContentType 'application/json' `
+        -Body $mismatchBody | Out-Null
+      throw 'resolution guard: expected authz company mismatch for POST'
+    } catch {
+      $info = Get-HttpErrorInfo $_
+      if ($info.status -ne 403) {
+        throw ("resolution guard: expected HTTP 403 for POST company mismatch, got {0}. body={1}" -f $info.status, $info.text)
+      }
+      if (-not $info.json) {
+        throw ("resolution guard: expected JSON error body for POST mismatch. raw={0}" -f $info.text)
+      }
+      if ($info.json.code -ne 'FORBIDDEN') {
+        throw ("resolution guard: expected FORBIDDEN code, got {0}" -f $info.json.code)
+      }
+      if (-not $info.json.details -or $info.json.details.kind -ne 'authz') {
+        throw 'resolution guard: expected details.kind=authz for POST mismatch'
+      }
+      if ($info.json.details.error -ne 'company_mismatch') {
+        throw ("resolution guard: expected details.error=company_mismatch, got {0}" -f $info.json.details.error)
+      }
+    }
+  } else {
+    $postMismatchStatus = Invoke-StatusCode `
+      -Method 'POST' `
+      -Uri "$baseUrl/api/attendance/$attendanceDayId/resolutions" `
+      -Body $mismatchBody `
+      -Headers $operatorHeaders
+    if ($postMismatchStatus -ne 404) {
+      throw "resolution guard: expected 404 for POST company mismatch, got $postMismatchStatus"
+    }
   }
 
   $validBody = @{
