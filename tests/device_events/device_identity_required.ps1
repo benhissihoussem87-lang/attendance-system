@@ -2,6 +2,26 @@ $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
 
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$authHeaders = @{}
+if ($requireAuth) {
+  $k = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $k) { $k = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' } }
+  if (-not $k) { Write-Host 'SKIP: device identity required (TEST_API_KEY_* missing under REQUIRE_AUTH)'; exit 0 }
+  $authHeaders['x-api-key'] = $k
+}
+
 function Get-HttpErrorInfo {
   param($err)
 
@@ -63,7 +83,7 @@ try {
   } | ConvertTo-Json -Depth 5
 
   try {
-    Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -ContentType 'application/json' -Body $badEvent | Out-Null
+    Invoke-RestMethod "$baseUrl/api/device-events" -Method Post -Headers $authHeaders -ContentType 'application/json' -Body $badEvent | Out-Null
     throw 'expected device-events insert to fail'
   } catch {
     $info = Get-HttpErrorInfo $_
@@ -92,6 +112,7 @@ p1,2026-01-12 08:00:00,IN,
 
   $res = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
     -Method Post `
+    -Headers $authHeaders `
     -ContentType 'text/plain' `
     -Body $csv
 
