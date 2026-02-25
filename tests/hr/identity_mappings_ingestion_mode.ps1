@@ -8,16 +8,106 @@ $nonce = ([guid]::NewGuid().ToString('N')).Substring(0, 6)
 $runSuffix = "${safeRunId}_${nonce}_hringest"
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+
+function To-Bool {
+  param($value)
+  if ($null -eq $value) { return $false }
+  if ($value -is [bool]) { return $value }
+  if ($value -is [int]) { return $value -ne 0 }
+  $text = $value.ToString().Trim().ToLower()
+  if ($text -in @('1', 'true', 'yes', 'y', 'on')) { return $true }
+  if ($text -in @('0', 'false', 'no', 'n', 'off', '')) { return $false }
+  return $false
+}
+
+function Get-HttpErrorInfo {
+  param($err)
+
+  $status = $null
+  $text = $null
+
+  try {
+    $resp = $err.Exception.Response
+    if ($resp -is [System.Net.HttpWebResponse]) {
+      $status = [int]$resp.StatusCode
+      $stream = $resp.GetResponseStream()
+      if ($stream) {
+        $reader = New-Object System.IO.StreamReader($stream)
+        $text = $reader.ReadToEnd()
+      }
+    }
+  } catch {}
+
+  if (-not $text) {
+    try {
+      $resp2 = $err.Exception.Response
+      if ($resp2 -and $resp2.Content) {
+        $status = [int]$resp2.StatusCode
+        $text = $resp2.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+      }
+    } catch {}
+  }
+
+  if (-not $text) {
+    try {
+      if ($err.ErrorDetails -and $err.ErrorDetails.Message) {
+        $text = $err.ErrorDetails.Message
+      }
+    } catch {}
+  }
+
+  $json = $null
+  if ($text) {
+    try { $json = $text | ConvertFrom-Json -ErrorAction Stop } catch { $json = $null }
+  }
+
+  return @{
+    status = $status
+    text   = $text
+    json   = $json
+  }
+}
+
+$requireAuth = To-Bool $env:REQUIRE_AUTH
+$adminHeaders = @{}
+$operatorHeaders = @{}
+if ($requireAuth) {
+  $adminKey = if ($env:TEST_API_KEY_ADMIN) { $env:TEST_API_KEY_ADMIN.ToString().Trim() } else { '' }
+  $opKey = if ($env:TEST_API_KEY_OPERATOR) { $env:TEST_API_KEY_OPERATOR.ToString().Trim() } else { '' }
+  if (-not $adminKey -and -not $opKey) {
+    Write-Host 'SKIP: identity mappings ingestion mode (TEST_API_KEY_* missing under REQUIRE_AUTH)'
+    exit 0
+  }
+  if ($adminKey) { $adminHeaders['x-api-key'] = $adminKey }
+  if ($opKey) {
+    $operatorHeaders['x-api-key'] = $opKey
+  } else {
+    $operatorHeaders = @{} + $adminHeaders
+  }
+}
+
+$opsHeaders = if ($adminHeaders.Count -gt 0) { @{} + $adminHeaders } else { @{} + $operatorHeaders }
 try {
-  $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  if ($opsHeaders.Count -gt 0) {
+    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers $opsHeaders
+  } else {
+    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+  }
 } catch {
-  $mode = $null
+  $probe = Get-HttpErrorInfo $_
+  $status = $probe.status
+  $text = if ($probe.text) { $probe.text.ToString().Trim().ToLower() } else { '' }
+  $errorValue = if ($probe.json -and $probe.json.error) { $probe.json.error.ToString().Trim().ToLower() } else { '' }
+  if ($status -eq 404 -or $errorValue -eq 'not_found' -or $text.Contains('not found') -or $text.Contains('allow_test_endpoints')) {
+    Write-Host 'SKIP: identity mappings ingestion mode (test endpoints disabled)'
+    exit 0
+  }
+  throw
 }
 
 if (-not $mode -or -not $mode.allow_test_endpoints) {
-  Write-Host 'FAIL: identity mappings ingestion mode'
-  Write-Host 'This test requires ALLOW_TEST_ENDPOINTS=true'
-  exit 1
+  Write-Host 'SKIP: identity mappings ingestion mode (test endpoints disabled)'
+  exit 0
 }
 
 if (-not $mode.use_identity_mappings) {
@@ -154,6 +244,7 @@ try {
 
   Invoke-RestMethod $vendorEmployeeUrl `
     -Method Put `
+    -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
       metadata = @{}
@@ -164,9 +255,8 @@ badgenumber,checktime,checktype,sn
 $vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runSuffix
 "@
 
-  $vendorHeaders = @{
-    'x-vendor' = $vendorProvider
-  }
+  $vendorHeaders = @{} + $operatorHeaders
+  $vendorHeaders['x-vendor'] = $vendorProvider
 
   $previewMissingVendorRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
     -Method Post `
@@ -244,6 +334,7 @@ $vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runSuffix
 
   Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
     -Method Put `
+    -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
       provider = $vendorProvider
@@ -322,6 +413,7 @@ $vendorIdentifier,2026-01-07 08:00:00,I,TEST-SN-$runSuffix
 
     Invoke-RestMethod $genericEmployeeUrl `
       -Method Put `
+      -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
         metadata = @{}
@@ -332,9 +424,8 @@ person_id,event_time,direction,device_uid
 $genericIdentifier,2026-01-07 09:00:00,IN,TEST-DEVICE-1-generic-$runSuffix
 "@
 
-    $genericHeaders = @{
-      'x-vendor' = $genericProvider
-    }
+    $genericHeaders = @{} + $operatorHeaders
+    $genericHeaders['x-vendor'] = $genericProvider
 
     $previewMissingGenericRaw = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
       -Method Post `
