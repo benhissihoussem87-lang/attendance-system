@@ -1,0 +1,3 @@
+## 2026-05-08 - [Enterprise UX Alignment & Async Feedback]
+**Learning:** In enterprise/B2B applications (like attendance systems), right-aligning numerical data in tables is critical for scannability, a pattern strongly endorsed by design systems like VMware Clarity. Additionally, explicitly disabling buttons and showing an `aria-busy` state during fast API calls prevents duplicate submissions and user confusion, which is especially important for data-heavy operations.
+**Action:** When adding or modifying data tables, always check if numerical columns should be right-aligned. For any async fetch action, apply explicit `disabled` and `aria-busy` states to the triggering element to improve both accessibility and interaction confidence.
