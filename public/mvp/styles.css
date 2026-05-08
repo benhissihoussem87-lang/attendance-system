@@ -1,0 +1,274 @@
+:root {
+  --bg: #f4f6f0;
+  --card: #ffffff;
+  --ink: #20251f;
+  --muted: #5c665c;
+  --line: #d3dacd;
+  --accent: #0f766e;
+  --accent-2: #14532d;
+  --warn: #b91c1c;
+  --ok: #166534;
+  --soft: #eef4eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Sora", "Trebuchet MS", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(1000px 480px at 8% -5%, #d8efe8 0%, rgba(216, 239, 232, 0) 62%),
+    radial-gradient(820px 420px at 96% 4%, #e7efd8 0%, rgba(231, 239, 216, 0) 58%),
+    var(--bg);
+}
+
+.shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.brand p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  border: 1px solid var(--line);
+  background: #f7fbf4;
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.tab-active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 14px;
+  box-shadow: 0 4px 14px rgba(30, 41, 22, 0.05);
+}
+
+.card h2,
+.card h3 {
+  margin-top: 0;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field span {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.field-checkbox input {
+  width: 24px;
+  height: 24px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+button {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+}
+
+.status.ok {
+  border-color: #86efac;
+  color: var(--ok);
+  background: #f0fdf4;
+}
+
+.status.err {
+  border-color: #fca5a5;
+  color: var(--warn);
+  background: #fef2f2;
+}
+
+.error-envelope {
+  margin-top: 10px;
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  background: #fff7f7;
+  padding: 10px;
+}
+
+.error-envelope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  font-size: 0.86rem;
+}
+
+.env-details {
+  margin: 8px 0 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.hidden {
+  display: none;
+}
+
+.json {
+  margin: 10px 0 0;
+  background: #10231f;
+  color: #d8f9e8;
+  padding: 10px;
+  border-radius: 10px;
+  overflow: auto;
+  max-height: 320px;
+}
+
+.table-wrap {
+  margin-top: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+th,
+td {
+  border-bottom: 1px solid #ebefe7;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  position: sticky;
+  top: 0;
+  background: #f8fbf6;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.page.hidden {
+  display: none;
+}
+
+details summary {
+  cursor: pointer;
+}
+
+.table-wrap pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 360px;
+}
+
+@media (max-width: 700px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .topbar {
+    align-items: start;
+  }
+
+  .tabs {
+    width: 100%;
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+  }
+}

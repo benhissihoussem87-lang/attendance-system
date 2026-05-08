@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Attendance Operations</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="workspace-shell">
+    <aside class="object-navigator" aria-label="Product navigation and operations objects">
+      <header class="navigator-header">
+        <div>
+          <p class="eyebrow">Attendance SaaS</p>
+          <h1>Product</h1>
+        </div>
+        <p id="authState">Checking session.</p>
+        <button id="logoutButton" type="button">Logout</button>
+        <p id="status" role="status">Loading.</p>
+      </header>
+
+      <nav class="navigator-block" aria-label="Main product navigation">
+        <div class="navigator-row-title"><h2>Modules</h2></div>
+        <div class="device-tree" id="moduleNav">
+          <button type="button" class="tree-node device-node selected" data-module="operations"><span class="node-icon">▣</span><span class="node-main"><strong>Operations</strong><small>Devices and monitoring</small></span></button>
+          <button type="button" class="tree-node device-node" data-module="employees"><span class="node-icon">▣</span><span class="node-main"><strong>Employees</strong><small>People and identities</small></span></button>
+          <button type="button" class="tree-node device-node" data-module="attendance"><span class="node-icon">▣</span><span class="node-main"><strong>Attendance</strong><small>Days and results</small></span></button>
+          <button type="button" class="tree-node device-node" data-module="schedules"><span class="node-icon">▣</span><span class="node-main"><strong>Schedules</strong><small>Shifts and planning</small></span></button>
+          <button type="button" class="tree-node device-node" data-module="rules"><span class="node-icon">▣</span><span class="node-main"><strong>Rules</strong><small>Calculation policy</small></span></button>
+          <button type="button" class="tree-node device-node" data-module="reports"><span class="node-icon">▣</span><span class="node-main"><strong>Reports</strong><small>Exports and summaries</small></span></button>
+          <button type="button" class="tree-node device-node" data-module="settings" data-requires-role="admin"><span class="node-icon">▣</span><span class="node-main"><strong>Settings</strong><small>Company and device profiles</small></span></button>
+        </div>
+      </nav>
+
+      <div id="operationsNavigator">
+        <nav class="object-tree" aria-label="Operations object tree">
+          <section class="tree-group">
+            <div class="tree-group-title"><span>Objects</span></div>
+            <div class="tree-node site-node">
+              <span class="node-icon">▾</span>
+              <span id="companyTreeLabel">Company</span>
+            </div>
+            <div class="tree-group-title device-title-row">
+              <span>Sites and devices</span>
+              <button type="button" class="link-button" data-module="settings">Manage in Settings</button>
+            </div>
+            <div id="deviceTree" class="device-tree" aria-label="Sites and devices">Loading devices.</div>
+          </section>
+        </nav>
+      </div>
+    </aside>
+
+    <section class="object-workspace" aria-label="Product workspace">
+      <section id="operationsModule" data-module-panel="operations">
+        <header class="object-header">
+          <div>
+            <p id="breadcrumb" class="breadcrumb">Company / Default Site / Device</p>
+            <h2 id="selectedObjectTitle">Select a device</h2>
+            <p id="selectedObjectSubtitle">Choose a product-ready pointeuse from the left navigator.</p>
+          </div>
+          <div class="object-status" id="monitoringState">Not connected.</div>
+        </header>
+
+        <section class="action-bar" aria-label="Device workspace actions">
+          <button id="connectMonitoring" type="button" class="button primary" data-requires-role="operator">Connect</button>
+          <button id="disconnectMonitoring" type="button" class="button dark" data-requires-role="operator">Disconnect</button>
+          <button id="syncHistory" type="button" class="button accent" data-requires-role="operator">Sync attendance logs</button>
+          <button id="refreshWorkspace" type="button" class="button secondary">Refresh</button>
+        </section>
+
+        <section class="workspace-grid">
+          <article id="monitoringSection" class="panel status-panel" aria-label="Selected device status">
+            <div class="panel-heading">
+              <p class="eyebrow">Status</p>
+              <h3>Selected object</h3>
+            </div>
+            <div id="deviceDetail" class="detail-grid">Select a product-ready device.</div>
+            <details class="technical-details">
+              <summary>Technical details</summary>
+              <p id="technicalState">No technical details loaded.</p>
+            </details>
+          </article>
+
+          <article class="panel sync-panel" aria-label="Sync and history status">
+            <div class="panel-heading">
+              <p class="eyebrow">Sync</p>
+              <h3>History</h3>
+            </div>
+            <p id="syncState">Attendance logs not synced from this page.</p>
+            <p id="latestBatchState">No recent sync loaded.</p>
+          </article>
+        </section>
+
+        <section id="rtSection" class="panel live-panel" aria-label="Live punches">
+          <div class="panel-row">
+            <div class="panel-heading">
+              <p class="eyebrow">Live punches</p>
+              <h3>Realtime observations</h3>
+            </div>
+            <div class="live-controls">
+              <span id="sseState" class="live-state">Live connection not started.</span>
+              <button id="refreshRt" type="button" class="button secondary">Refresh live punches</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="live-table" aria-label="Live punches">
+              <thead><tr><th>Time</th><th>Person</th><th>Direction</th><th>State</th><th>Source</th></tr></thead>
+              <tbody id="rtBody"><tr><td colspan="5">No live punches loaded.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="employeesModule" class="panel" data-module-panel="employees" hidden>
+        <p class="eyebrow">Employees</p>
+        <h2>Employees</h2>
+        <p id="employeesState" class="muted-line">No employees loaded.</p>
+        <section class="action-bar" aria-label="Employee actions">
+          <button id="newEmployeeButton" type="button" class="button secondary" data-requires-role="admin">New employee</button>
+          <button id="refreshEmployeesButton" type="button" class="button secondary">Refresh employees</button>
+        </section>
+        <section class="workspace-grid">
+          <article class="panel" aria-label="Employee list">
+            <div class="panel-heading">
+              <p class="eyebrow">Registry</p>
+              <h3>Employee list</h3>
+            </div>
+            <div class="table-wrap">
+              <table class="live-table" aria-label="Employees">
+                <thead><tr><th>Matricule</th><th>Name</th><th>Status</th><th>Site</th><th>Device users</th></tr></thead>
+                <tbody id="employeesBody"><tr><td colspan="5">No employees loaded.</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="panel" aria-label="Selected employee profile">
+            <div class="panel-heading">
+              <p class="eyebrow">Profile</p>
+              <h3 id="selectedEmployeeTitle">Select an employee</h3>
+            </div>
+            <form id="employeeForm" class="stacked-form">
+              <label>Matricule <input id="employeeCodeInput" required /></label>
+              <label>First name <input id="employeeFirstNameInput" /></label>
+              <label>Last name <input id="employeeLastNameInput" /></label>
+              <label>Display name <input id="employeeFullNameInput" required /></label>
+              <label>Site <select id="employeeSiteInput"></select></label>
+              <label>Job / Poste <input id="employeeJobInput" /></label>
+              <label>Notes <textarea id="employeeNotesInput" rows="3"></textarea></label>
+              <label>Active <select id="employeeActiveInput"><option value="true">active</option><option value="false">inactive</option></select></label>
+              <button id="saveEmployeeButton" type="submit" class="button secondary" data-requires-role="admin">Save employee</button>
+            </form>
+          </article>
+        </section>
+        <section class="workspace-grid">
+          <article class="panel" aria-label="Device user mapping">
+            <div class="panel-heading">
+              <p class="eyebrow">Device identity</p>
+              <h3>Device user mapping</h3>
+            </div>
+            <div id="employeeMappingsList" class="detail-grid">Select an employee to view mappings.</div>
+            <form id="employeeMappingForm" class="stacked-form">
+              <label>Provider <input id="mappingProviderInput" value="zkteco" /></label>
+              <label>Device user ID <input id="mappingDeviceUserInput" required /></label>
+              <label>Mapping status <select id="mappingActiveInput"><option value="true">active</option><option value="false">inactive</option></select></label>
+              <button id="saveMappingButton" type="submit" class="button secondary" data-requires-role="admin">Save mapping</button>
+            </form>
+          </article>
+          <article class="panel" aria-label="Enrollment boundary">
+            <div class="panel-heading">
+              <p class="eyebrow">Biometrics</p>
+              <h3>Enrollment status</h3>
+            </div>
+            <p>Biometric/enrollment management is future work.</p>
+            <p class="muted-line">Employees v1 manages registry records and device-user identity mappings only.</p>
+          </article>
+        </section>
+      </section>
+      <section id="attendanceModule" class="panel" data-module-panel="attendance" hidden>
+        <p class="eyebrow">Attendance</p>
+        <h2>Attendance</h2>
+        <p>Daily attendance is calculated from trusted full-history device events. Live RT rows are not used as attendance facts.</p>
+        <div class="form-grid">
+          <label>Start date
+            <input id="attendanceStartDate" type="date" />
+          </label>
+          <label>End date
+            <input id="attendanceEndDate" type="date" />
+          </label>
+          <label>Site
+            <select id="attendanceSiteFilter"></select>
+          </label>
+          <label>Employee
+            <select id="attendanceEmployeeFilter"></select>
+          </label>
+        </div>
+        <div class="panel-row">
+          <button id="refreshAttendance" type="button" class="button secondary">Refresh attendance</button>
+          <p id="attendanceSummary">Attendance not loaded.</p>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Site</th>
+              <th>Matricule</th>
+              <th>Employee</th>
+              <th>First punch</th>
+              <th>Last punch</th>
+              <th>Events</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceRows">
+            <tr><td colspan="8">No attendance loaded.</td></tr>
+          </tbody>
+        </table>
+        <details>
+          <summary>Unmapped device users</summary>
+          <div id="attendanceUnmapped">
+            <p>No unmapped product-device punches loaded.</p>
+          </div>
+        </details>
+      </section>
+      <section id="schedulesModule" class="panel" data-module-panel="schedules" hidden>
+        <p class="eyebrow">Schedules</p>
+        <h2>Schedules</h2>
+        <p>Shift planning and schedules will live here. No scheduling engine is implemented in this slice.</p>
+      </section>
+      <section id="rulesModule" class="panel" data-module-panel="rules" hidden>
+        <p class="eyebrow">Rules</p>
+        <h2>Rules</h2>
+        <p>Calculation rules and simulation controls will live here. No rule engine changes are included.</p>
+      </section>
+      <section id="reportsModule" class="panel" data-module-panel="reports" hidden>
+        <p class="eyebrow">Reports</p>
+        <h2>Reports</h2>
+        <p>Exports, reports, and summaries will live here. No report engine is implemented in this slice.</p>
+      </section>
+      <section id="settingsModule" class="panel" data-module-panel="settings" hidden>
+        <p class="eyebrow">Settings</p>
+        <h2>Settings</h2>
+        <p>Company, site, device setup, and device profile settings live here. Policy migration remains a future task.</p>
+
+        <section id="companySection" aria-label="Company settings">
+          <h3>Companies</h3>
+          <label class="compact-field">Active company
+            <select id="companySelect"></select>
+          </label>
+          <p id="companyState" class="muted-line">No company loaded.</p>
+          <div id="companyList" class="detail-grid">No companies loaded.</div>
+          <details id="companySetup" class="inline-setup">
+            <summary>Add company</summary>
+            <form id="companyForm" class="stacked-form">
+              <label>Company ID <input id="companyIdInput" required /></label>
+              <label>Display name <input id="companyNameInput" required /></label>
+              <label>Timezone <input id="companyTimezoneInput" placeholder="Africa/Tunis" /></label>
+              <button type="submit" class="button secondary">Add company</button>
+            </form>
+          </details>
+        </section>
+
+        <section aria-label="Site settings">
+          <h3>Sites</h3>
+          <p id="siteState" class="muted-line">No sites loaded.</p>
+          <div id="siteList" class="detail-grid">No sites loaded.</div>
+          <details id="siteSetup" class="inline-setup">
+            <summary>Site setup</summary>
+            <form id="siteForm" class="stacked-form">
+              <label>Site key <input id="siteKeyInput" value="default-site" /></label>
+              <label>Site name <input id="siteNameInput" value="Default Site" required /></label>
+              <label>Timezone <input id="siteTimezoneInput" value="Africa/Tunis" /></label>
+              <button type="submit" class="button secondary">Add / reuse site</button>
+            </form>
+            <p class="muted-line">Device-to-site assignment uses the existing backend site model. Full policy/profile settings remain future work.</p>
+          </details>
+        </section>
+
+        <section aria-label="Device settings">
+          <h3>Devices</h3>
+          <p id="deviceSiteAssignmentState" class="muted-line">No selected device site assignment loaded.</p>
+          <button id="assignSelectedDeviceSite" type="button" class="button secondary">Assign selected device to Default Site</button>
+          <div id="deviceSettingsList" class="detail-grid">No product devices loaded.</div>
+          <details id="deviceSetup" class="inline-setup">
+            <summary>Add / configure device</summary>
+            <form id="deviceForm" class="stacked-form">
+              <label>Device name <input id="deviceNameInput" required /></label>
+              <label>Vendor <input id="deviceVendorInput" value="zkteco" required /></label>
+              <label>Model <input id="deviceModelInput" value="K80 Pro" /></label>
+              <label>IP/host <input id="deviceHostInput" placeholder="192.168.22.201" required /></label>
+              <label>Port <input id="devicePortInput" type="number" value="4370" required /></label>
+              <label>Transport <input id="deviceTransportInput" value="tcp" /></label>
+              <label>Comm/auth password <input id="deviceAuthInput" type="password" autocomplete="new-password" placeholder="Leave blank to avoid storing a credential" /></label>
+              <label>Site <select id="deviceSiteInput"></select></label>
+              <label>Managing agent <select id="deviceAgentInput"></select></label>
+              <button type="submit" class="button secondary">Save device</button>
+            </form>
+          </details>
+          <p class="muted-line">Credentials are write-only here. Stored comm/auth passwords are never displayed.</p>
+        </section>
+
+        <section aria-label="Device policy and capability settings">
+          <h3>Policy and capability status</h3>
+          <div id="policyCapabilityState" class="detail-grid">No policy or capability status loaded.</div>
+          <p class="muted-line">K80 devices require the known-good runtime flags from the K80 operational runbook. Editing those policies from Settings remains future DB-backed policy work.</p>
+        </section>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

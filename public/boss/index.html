@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Internal Legacy Boss Console</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="boss-layout">
+    <aside class="app-sidebar">
+      <div class="sidebar-brand">
+        <p class="eyebrow">Internal Debug</p>
+        <h1>Legacy Boss Console</h1>
+        <p class="subtle">Internal/debug console only. The client-facing product operations workflow lives at /app.</p>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Operations navigation">
+        <button class="tab tab-active nav-tab" data-tab="overview" type="button">
+          <span class="nav-title">Overview</span>
+          <span class="nav-sub">Health and attention</span>
+        </button>
+        <button class="tab nav-tab" data-tab="agents" type="button">
+          <span class="nav-title">Sites &amp; Agents</span>
+          <span class="nav-sub">Runtime and heartbeat</span>
+        </button>
+        <button class="tab nav-tab" data-tab="devices" type="button">
+          <span class="nav-title">Devices</span>
+          <span class="nav-sub">Onboarding and readiness</span>
+        </button>
+        <button class="tab nav-tab" data-tab="operations" type="button">
+          <span class="nav-title">Operations</span>
+          <span class="nav-sub">Connect, sync, and live RT</span>
+        </button>
+        <button class="tab nav-tab" data-tab="activity" type="button">
+          <span class="nav-title">Activity</span>
+          <span class="nav-sub">Commands, sync, and batches</span>
+        </button>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-top card">
+        <div class="workspace-heading">
+          <p class="eyebrow">Internal Legacy Workspace</p>
+          <h2>Debug Device Operations</h2>
+          <p class="subtle">Use this only for internal diagnostics. Client-facing operations are handled at /app.</p>
+        </div>
+
+        <div class="topbar-controls">
+          <label class="field">
+            <span>Base URL</span>
+            <input id="baseUrl" type="url" placeholder="http://localhost:3000" />
+          </label>
+          <label class="field">
+            <span>Company</span>
+            <input id="companyId" type="text" value="DEFAULT" />
+          </label>
+          <label class="field">
+            <span>Environment</span>
+            <input id="environment" type="text" value="Local" />
+          </label>
+          <label class="field field-wide">
+            <span>API Key</span>
+            <input id="apiKey" type="password" placeholder="Required only when REQUIRE_AUTH=1" />
+          </label>
+          <div class="actions">
+            <button id="btnRefresh" type="button">Refresh Data</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="summary-grid">
+        <article class="summary-card card">
+          <p class="summary-label">Agents Online</p>
+          <p id="metricAgentsOnline" class="summary-value">-</p>
+          <p class="summary-help">Seen in the last 10 minutes.</p>
+        </article>
+        <article class="summary-card card">
+          <p class="summary-label">Site Runtimes Offline</p>
+          <p id="metricRuntimesOfflineOverview" class="summary-value danger">-</p>
+          <p class="summary-help">Active runtimes not recently seen.</p>
+        </article>
+        <article class="summary-card card">
+          <p class="summary-label">Blocked Devices</p>
+          <p id="metricBlockedDevices" class="summary-value danger">-</p>
+          <p class="summary-help">Require remediation before pull readiness.</p>
+        </article>
+        <article class="summary-card card">
+          <p class="summary-label">Needs Field Action</p>
+          <p id="metricNeedsFieldAction" class="summary-value warning">-</p>
+          <p class="summary-help">Manual follow-up requested by operator.</p>
+        </article>
+        <article class="summary-card card">
+          <p class="summary-label">Degraded / Failed Signals</p>
+          <p id="metricFailedStale" class="summary-value danger">-</p>
+          <p class="summary-help">Failures, expiries, or sync errors needing follow-up.</p>
+        </article>
+      </section>
+
+      <section id="globalStatus" class="status status-info card">Ready.</section>
+
+      <section id="panel-overview" class="panel panel-active">
+        <div class="panel-grid">
+          <article class="card">
+            <h3>Needs Attention</h3>
+            <ul id="attentionList" class="attention-list">
+              <li class="empty">No critical issues detected in current sample.</li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <h3>Recent Health Signals</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Signal</th>
+                    <th>Outcome</th>
+                    <th>Scope</th>
+                    <th>When</th>
+                    <th>Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="overviewSignalsBody">
+                  <tr><td colspan="5" class="empty">No rows.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="panel-agents" class="panel">
+        <article class="card">
+          <h3>Site Runtimes</h3>
+          <p class="subtle section-sub">Understand runtime health, attached devices, and whether each site is actionable right now.</p>
+          <section class="agents-runtime-summary">
+            <article class="summary-card card">
+              <p class="summary-label">Site Runtimes Online</p>
+              <p id="metricRuntimesOnline" class="summary-value">-</p>
+              <p class="summary-help">Runtime active and recently seen.</p>
+            </article>
+            <article class="summary-card card">
+              <p class="summary-label">Site Runtimes Offline</p>
+              <p id="metricRuntimesOffline" class="summary-value danger">-</p>
+              <p class="summary-help">Needs runtime recovery or investigation.</p>
+            </article>
+            <article class="summary-card card">
+              <p class="summary-label">Devices Attached</p>
+              <p id="metricRuntimeDevicesAttached" class="summary-value">-</p>
+              <p class="summary-help">Devices currently linked to visible runtimes.</p>
+            </article>
+            <article class="summary-card card">
+              <p class="summary-label">Actionable Devices</p>
+              <p id="metricRuntimeActionable" class="summary-value warning">-</p>
+              <p class="summary-help">Pull-ready devices on online runtimes.</p>
+            </article>
+          </section>
+          <div class="filters">
+            <label class="field">
+              <span>Status</span>
+              <input id="agentsStatus" type="text" placeholder="active | inactive | revoked" />
+            </label>
+            <label class="field">
+              <span>Seen Since (ISO)</span>
+              <input id="agentsSeenSince" type="text" placeholder="2026-03-15T00:00:00Z" />
+            </label>
+            <label class="field small">
+              <span>Limit</span>
+              <input id="agentsLimit" type="number" min="1" max="200" value="50" />
+            </label>
+            <button id="btnLoadAgents" type="button">Apply Filters</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Site Runtime</th>
+                  <th>Health</th>
+                  <th>Last Heartbeat</th>
+                  <th>Devices Attached</th>
+                  <th>Devices Pull-ready</th>
+                  <th>Devices Blocked</th>
+                  <th>Recent Activity</th>
+                  <th>Actionability</th>
+                  <th>Requires Attention</th>
+                  <th>Agent ID</th>
+                </tr>
+              </thead>
+              <tbody id="agentsBody">
+                <tr><td colspan="10" class="empty">No rows.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="panel-devices" class="panel">
+        <article class="card">
+          <h3>Devices</h3>
+          <p class="subtle section-sub">Understand onboarding state, validation proof, and next lifecycle action per device.</p>
+
+          <section id="validatedProgressSection" class="validated-progress">
+            <div class="validated-progress-head">
+              <h4>Device Live View</h4>
+              <p class="subtle">Live-now readiness, historical pull proof, and the next operational step.</p>
+            </div>
+            <div class="validated-progress-actions">
+              <label class="field field-inline-agent">
+                <span>Agent ID (for Validate/Bind)</span>
+                <input id="onboardingAgentId" type="text" placeholder="optional UUID" />
+              </label>
+              <button id="btnQueuePullNow" type="button">Run Next Action</button>
+              <span id="queuePullFeedback" class="validated-feedback">Select a bridge device, then run the next lifecycle action (validate, claim, bind, or queue pull).</span>
+            </div>
+            <div id="validatedProgressBody" class="validated-progress-body">
+              <p class="empty">Refresh and optionally filter by Device UID to show progress details.</p>
+            </div>
+          </section>
+
+          <div class="filters">
+            <label class="field">
+              <span>Lifecycle Scope</span>
+              <select id="devicesLifecycleScope">
+                <option value="bridge_ops" selected>bridge_ops (default)</option>
+                <option value="all">all (diagnostic)</option>
+                <option value="ingest_only">ingest_only (diagnostic)</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Device UID</span>
+              <input id="devicesUid" type="text" placeholder="optional" />
+            </label>
+            <label class="field">
+              <span>Managed Status</span>
+              <input id="devicesManagedStatus" type="text" placeholder="candidate | managed" />
+            </label>
+            <label class="field">
+              <span>Manageability</span>
+              <input id="devicesManageabilityStatus" type="text" placeholder="blocked | ingesting" />
+            </label>
+            <label class="field">
+              <span>Manual Remediation</span>
+              <input id="devicesRemediationStatus" type="text" placeholder="needs_field_action" />
+            </label>
+            <label class="field small">
+              <span>Limit</span>
+              <input id="devicesLimit" type="number" min="1" max="200" value="50" />
+            </label>
+            <button id="btnLoadDevices" type="button">Apply Filters</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="devices-table">
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Device</th>
+                  <th>Provider</th>
+                  <th>Onboarding</th>
+                  <th>Validation</th>
+                  <th>Pull Readiness</th>
+                  <th>Last Successful Pull</th>
+                  <th>Recent Data</th>
+                  <th>Next Action</th>
+                  <th>Live Status</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="devicesBody">
+                <tr><td colspan="11" class="empty">No rows.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="panel-operations" class="panel">
+        <article class="card">
+          <h3>Companies</h3>
+          <p class="subtle section-sub">Select the active company context or add a company. This only changes API context for this browser tab.</p>
+          <div class="filters">
+            <label class="field">
+              <span>Company ID</span>
+              <input id="opsCompanyNewId" type="text" placeholder="COMPANY_ID" />
+            </label>
+            <label class="field">
+              <span>Display Name</span>
+              <input id="opsCompanyNewName" type="text" placeholder="Company display name" />
+            </label>
+            <label class="field">
+              <span>Timezone</span>
+              <input id="opsCompanyNewTimezone" type="text" placeholder="Africa/Tunis" />
+            </label>
+            <button id="btnOpsAddCompany" type="button">Add Company</button>
+            <button id="btnOpsLoadCompanies" type="button">Refresh Companies</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Company</th>
+                  <th>Timezone</th>
+                  <th>Status</th>
+                  <th>Updated</th>
+                </tr>
+              </thead>
+              <tbody id="opsCompaniesBody">
+                <tr><td colspan="5" class="empty">No rows.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Device Operations</h3>
+          <p class="subtle section-sub">Browser actions create SaaS leases and agent commands. The browser tab does not own the K80 TCP connection.</p>
+          <div class="filters">
+            <label class="field">
+              <span>Device UID</span>
+              <input id="opsDeviceUidFilter" type="text" placeholder="optional" />
+            </label>
+            <label class="field small">
+              <span>Limit</span>
+              <input id="opsDevicesLimit" type="number" min="1" max="200" value="50" />
+            </label>
+            <button id="btnOpsLoadDevices" type="button">Load Devices</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Select</th>
+                  <th>Device</th>
+                  <th>Provider / Model</th>
+                  <th>Managed</th>
+                  <th>Agent Binding</th>
+                  <th>Latest Command</th>
+                  <th>Latest Batch</th>
+                </tr>
+              </thead>
+              <tbody id="opsDevicesBody">
+                <tr><td colspan="7" class="empty">No rows.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Selected Device Detail</h3>
+          <div id="opsDeviceDetail" class="validated-progress-body">
+            <p class="empty">Select a device to view identity, connection, monitoring, command, and sync state.</p>
+          </div>
+          <div class="actions">
+            <button id="btnOpsConnectMonitoring" type="button">Connect Monitoring</button>
+            <button id="btnOpsDisconnectMonitoring" type="button">Disconnect Monitoring</button>
+            <button id="btnOpsSyncHistory" type="button">Sync Full History</button>
+            <button id="btnOpsRefreshRealtime" type="button">Refresh RT Rows</button>
+          </div>
+          <section id="opsMonitoringStatus" class="status status-info card">Monitoring session not started in this tab.</section>
+        </article>
+
+        <article class="card">
+          <h3>Live Realtime Observations</h3>
+          <p class="subtle section-sub">Rows are realtime observations only. They are not final attendance facts and do not imply product-visible attendance until fact ingestion confirms them.</p>
+          <section id="opsSseStatus" class="status status-info card">SSE not connected.</section>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Created</th>
+                  <th>Person</th>
+                  <th>RT State</th>
+                  <th>Direction</th>
+                  <th>Batch</th>
+                  <th>Dual-Time Metadata</th>
+                </tr>
+              </thead>
+              <tbody id="opsRealtimeBody">
+                <tr><td colspan="6" class="empty">No realtime observations loaded.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section id="panel-activity" class="panel">
+        <article class="card">
+          <h3>Recent Activity</h3>
+          <p class="subtle section-sub">Track command lifecycle, sync progression, and batch outcomes.</p>
+
+          <section class="activity-block">
+            <h4>Commands</h4>
+            <div class="filters">
+              <label class="field">
+                <span>Agent ID</span>
+                <input id="commandsAgentId" type="text" placeholder="optional" />
+              </label>
+              <label class="field">
+                <span>Device UID</span>
+                <input id="commandsDeviceUid" type="text" placeholder="optional" />
+              </label>
+              <label class="field">
+                <span>Status</span>
+                <input id="commandsStatus" type="text" placeholder="queued | failed | expired" />
+              </label>
+              <label class="field">
+                <span>Created From (ISO)</span>
+                <input id="commandsCreatedFrom" type="text" placeholder="2026-03-15T00:00:00Z" />
+              </label>
+              <label class="field">
+                <span>Created To (ISO)</span>
+                <input id="commandsCreatedTo" type="text" placeholder="2026-03-15T23:59:59Z" />
+              </label>
+              <label class="field small">
+                <span>Limit</span>
+                <input id="commandsLimit" type="number" min="1" max="200" value="50" />
+              </label>
+              <button id="btnLoadCommands" type="button">Apply Filters</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Type</th>
+                    <th>Device</th>
+                    <th>Agent</th>
+                    <th>Failure</th>
+                    <th>Sent</th>
+                    <th>Acknowledged</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <tbody id="commandsBody">
+                  <tr><td colspan="8" class="empty">No rows.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div class="panel-grid activity-grid">
+            <section class="activity-block card-inset">
+              <h4>Sync State</h4>
+              <div class="filters">
+                <label class="field">
+                  <span>Agent ID</span>
+                  <input id="syncAgentId" type="text" placeholder="optional" />
+                </label>
+                <label class="field">
+                  <span>Device UID</span>
+                  <input id="syncDeviceUid" type="text" placeholder="optional" />
+                </label>
+                <label class="field small">
+                  <span>Limit</span>
+                  <input id="syncLimit" type="number" min="1" max="200" value="50" />
+                </label>
+                <button id="btnLoadSync" type="button">Apply Filters</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Device</th>
+                      <th>Agent</th>
+                      <th>Status</th>
+                      <th>Cursor (UTC)</th>
+                      <th>Last Completed</th>
+                      <th>Failure</th>
+                      <th>Freshness</th>
+                    </tr>
+                  </thead>
+                  <tbody id="syncBody">
+                    <tr><td colspan="7" class="empty">No rows.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="activity-block card-inset">
+              <h4>Device Event Batches</h4>
+              <div class="filters">
+                <label class="field">
+                  <span>Agent ID</span>
+                  <input id="batchesAgentId" type="text" placeholder="optional" />
+                </label>
+                <label class="field">
+                  <span>Device UID</span>
+                  <input id="batchesDeviceUid" type="text" placeholder="optional" />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <input id="batchesStatus" type="text" placeholder="accepted | partial | rejected" />
+                </label>
+                <label class="field">
+                  <span>Created From (ISO)</span>
+                  <input id="batchesCreatedFrom" type="text" placeholder="2026-03-15T00:00:00Z" />
+                </label>
+                <label class="field">
+                  <span>Created To (ISO)</span>
+                  <input id="batchesCreatedTo" type="text" placeholder="2026-03-15T23:59:59Z" />
+                </label>
+                <label class="field small">
+                  <span>Limit</span>
+                  <input id="batchesLimit" type="number" min="1" max="200" value="50" />
+                </label>
+                <button id="btnLoadBatches" type="button">Apply Filters</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Device</th>
+                      <th>Failure</th>
+                      <th>Inserted</th>
+                      <th>Deduped</th>
+                      <th>Rejected</th>
+                      <th>Completed</th>
+                      <th>Samples</th>
+                    </tr>
+                  </thead>
+                  <tbody id="batchesBody">
+                    <tr><td colspan="8" class="empty">No rows.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
