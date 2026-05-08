@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$companyId = 'DEFAULT'
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $vendor = 'zkteco'
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
@@ -126,22 +127,24 @@ try {
   # Seed employees registry idempotently.
   foreach ($personId in $personIds) {
     $encodedPersonId = [uri]::EscapeDataString($personId)
-    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$companyId" `
+    Invoke-RestMethod "${baseUrl}/api/employees-registry/${encodedPersonId}?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
+        company_id = $companyId
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
 
   # Seed identity mappings idempotently.
   foreach ($personId in $personIds) {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
+    Invoke-RestMethod "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
+        company_id = $companyId
         provider = $vendor
         identifier_type = 'pin'
         identifier_value = $personId
@@ -155,7 +158,7 @@ try {
   $headers['x-company-id'] = $companyId
   $headers['x-vendor'] = $vendor
 
-  $preview = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
+  $preview = Invoke-RestMethod "${baseUrl}/api/device-events/import/preview?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $headers `
     -ContentType 'text/csv' `
@@ -167,7 +170,7 @@ try {
 
   $totalRows = [int]$preview.total_rows
 
-  $commitOne = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=$companyId" `
+  $commitOne = Invoke-RestMethod "${baseUrl}/api/device-events/import/commit?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $headers `
     -ContentType 'text/csv' `
@@ -177,7 +180,7 @@ try {
     Fail-WithResponse 'vendor_csv_matrix commit_one' $commitOne
   }
 
-  $commitTwo = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=$companyId" `
+  $commitTwo = Invoke-RestMethod "${baseUrl}/api/device-events/import/commit?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $headers `
     -ContentType 'text/csv' `

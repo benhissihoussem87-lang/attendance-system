@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -87,7 +88,7 @@ if ($requireAuth) {
 }
 
 try {
-  Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId1, 'DEFAULT') `
+  Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId1, [uri]::EscapeDataString($companyId)) `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -95,7 +96,7 @@ try {
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $create = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+  $create = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$([uri]::EscapeDataString($companyId))" `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -109,11 +110,11 @@ try {
 
   if ($create.person_id -ne $personId1) { throw 'expected person_id p1' }
 
-  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=$encodedIdentifierValue" `
+  $lookup = Invoke-RestMethod "$baseUrl/api/identity-mappings/lookup?company_id=$([uri]::EscapeDataString($companyId))&provider=zkteco&identifier_type=pin&identifier_value=$encodedIdentifierValue" `
     -Headers $authHeaders
   if ($lookup.person_id -ne $personId1) { throw 'expected lookup person_id p1' }
 
-  Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId2, 'DEFAULT') `
+  Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId2, [uri]::EscapeDataString($companyId)) `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -122,7 +123,7 @@ try {
     } | ConvertTo-Json -Depth 6) | Out-Null
 
   try {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$([uri]::EscapeDataString($companyId))" `
       -Method Put `
       -Headers $authHeaders `
       -ContentType 'application/json' `
@@ -151,7 +152,7 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$([uri]::EscapeDataString($companyId))" `
       -Method Put `
       -Headers $authHeaders `
       -ContentType 'application/json' `
@@ -199,7 +200,7 @@ try {
     }
   }
 
-  $list = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT&provider=zkteco" `
+  $list = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$([uri]::EscapeDataString($companyId))&provider=zkteco" `
     -Headers $authHeaders
   if (-not $list -or $list.Count -lt 1) { throw 'expected at least one mapping' }
 

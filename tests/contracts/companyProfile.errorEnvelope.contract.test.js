@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { getCompanyId, operatorHeaders, requireAuth } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -68,46 +69,102 @@ function assertErrorEnvelope(body) {
 
 async function run() {
   const baseUrl = getBaseUrl();
+  const companyId = getCompanyId();
+  const authRequired = requireAuth();
+  const authHeaders = operatorHeaders();
 
-  const mismatchRes = await requestJson({
-    method: 'GET',
-    url: `${baseUrl}/api/company-profile?company_id=DEFAULT`,
-    headers: { 'x-company-id': 'OTHER' }
-  });
+  if (authRequired) {
+    const unauthRes = await requestJson({
+      method: 'GET',
+      url: `${baseUrl}/api/company-profile?company_id=${encodeURIComponent(companyId)}`
+    });
+    assert.strictEqual(unauthRes.status, 401, 'missing API key should return 401');
+    assertErrorEnvelope(unauthRes.body);
+    assert.strictEqual(unauthRes.body.code, 'UNAUTHORIZED', 'missing API key code mismatch');
+    assert.ok(
+      unauthRes.body.details && unauthRes.body.details.kind === 'auth',
+      'missing API key details.kind should be auth'
+    );
 
-  assert.strictEqual(mismatchRes.status, 400, 'company_id mismatch should return 400');
-  assertErrorEnvelope(mismatchRes.body);
-  assert.strictEqual(mismatchRes.body.code, 'VALIDATION_ERROR', 'validation code mismatch');
-  assert.strictEqual(mismatchRes.body.message, 'Validation failed', 'validation message mismatch');
-  assert.ok(
-    mismatchRes.body.details && mismatchRes.body.details.kind === 'validation',
-    'validation details.kind should be validation'
-  );
-  assert.strictEqual(
-    mismatchRes.body.details.error,
-    'company_id_mismatch',
-    'validation details.error mismatch'
-  );
+    const mismatchRes = await requestJson({
+      method: 'GET',
+      url: `${baseUrl}/api/company-profile?company_id=${encodeURIComponent(companyId)}`,
+      headers: { ...authHeaders, 'x-company-id': 'OTHER' }
+    });
+    assert.strictEqual(mismatchRes.status, 403, 'company_id mismatch should return 403 under auth');
+    assertErrorEnvelope(mismatchRes.body);
+    assert.strictEqual(mismatchRes.body.code, 'FORBIDDEN', 'forbidden code mismatch');
+    assert.ok(
+      mismatchRes.body.details && mismatchRes.body.details.kind === 'authz',
+      'forbidden details.kind should be authz'
+    );
+    assert.strictEqual(
+      mismatchRes.body.details.error,
+      'company_mismatch',
+      'forbidden details.error mismatch'
+    );
 
-  const missingId = `missing-profile-${Math.random().toString(16).slice(2, 10)}`;
-  const missingRes = await requestJson({
-    method: 'GET',
-    url: `${baseUrl}/api/company-profile?company_id=${encodeURIComponent(missingId)}`
-  });
+    const metadataInvalidRes = await requestJson({
+      method: 'PUT',
+      url: `${baseUrl}/api/company-profile?company_id=${encodeURIComponent(companyId)}`,
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: {
+        metadata: 'invalid'
+      }
+    });
+    assert.strictEqual(metadataInvalidRes.status, 400, 'invalid metadata should return 400');
+    assertErrorEnvelope(metadataInvalidRes.body);
+    assert.strictEqual(metadataInvalidRes.body.code, 'VALIDATION_ERROR', 'validation code mismatch');
+    assert.ok(
+      metadataInvalidRes.body.details && metadataInvalidRes.body.details.kind === 'validation',
+      'validation details.kind should be validation'
+    );
+    assert.strictEqual(
+      metadataInvalidRes.body.details.error,
+      'metadata_invalid',
+      'validation details.error mismatch'
+    );
+  } else {
+    const mismatchRes = await requestJson({
+      method: 'GET',
+      url: `${baseUrl}/api/company-profile?company_id=${encodeURIComponent(companyId)}`,
+      headers: { 'x-company-id': 'OTHER' }
+    });
 
-  assert.strictEqual(missingRes.status, 404, 'missing profile should return 404');
-  assertErrorEnvelope(missingRes.body);
-  assert.strictEqual(missingRes.body.code, 'LOOKUP_NOT_FOUND', 'lookup code mismatch');
-  assert.strictEqual(missingRes.body.message, 'Company profile not found', 'lookup message mismatch');
-  assert.ok(
-    missingRes.body.details && missingRes.body.details.kind === 'lookup_error',
-    'lookup details.kind should be lookup_error'
-  );
-  assert.strictEqual(
-    missingRes.body.details.error,
-    'company_profile_not_found',
-    'lookup details.error mismatch'
-  );
+    assert.strictEqual(mismatchRes.status, 400, 'company_id mismatch should return 400');
+    assertErrorEnvelope(mismatchRes.body);
+    assert.strictEqual(mismatchRes.body.code, 'VALIDATION_ERROR', 'validation code mismatch');
+    assert.strictEqual(mismatchRes.body.message, 'Validation failed', 'validation message mismatch');
+    assert.ok(
+      mismatchRes.body.details && mismatchRes.body.details.kind === 'validation',
+      'validation details.kind should be validation'
+    );
+    assert.strictEqual(
+      mismatchRes.body.details.error,
+      'company_id_mismatch',
+      'validation details.error mismatch'
+    );
+
+    const missingId = `missing-profile-${Math.random().toString(16).slice(2, 10)}`;
+    const missingRes = await requestJson({
+      method: 'GET',
+      url: `${baseUrl}/api/company-profile?company_id=${encodeURIComponent(missingId)}`
+    });
+
+    assert.strictEqual(missingRes.status, 404, 'missing profile should return 404');
+    assertErrorEnvelope(missingRes.body);
+    assert.strictEqual(missingRes.body.code, 'LOOKUP_NOT_FOUND', 'lookup code mismatch');
+    assert.strictEqual(missingRes.body.message, 'Company profile not found', 'lookup message mismatch');
+    assert.ok(
+      missingRes.body.details && missingRes.body.details.kind === 'lookup_error',
+      'lookup details.kind should be lookup_error'
+    );
+    assert.strictEqual(
+      missingRes.body.details.error,
+      'company_profile_not_found',
+      'lookup details.error mismatch'
+    );
+  }
 
   console.log('company profile error envelope contract tests passed');
 }

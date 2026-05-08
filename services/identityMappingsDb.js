@@ -17,6 +17,50 @@ function normalizeBoolean(value) {
   return null;
 }
 
+async function findIdentityMappingByNormalizedKey(db, companyId, provider, identifierType, identifierValue) {
+  const res = await db.query(`
+    SELECT company_id, provider, identifier_type, identifier_value, person_id,
+           active, metadata, created_at, updated_at
+    FROM identity_mappings
+    WHERE company_id = $1 AND provider = $2 AND identifier_type = $3 AND identifier_value = $4
+    LIMIT 1
+  `, [companyId, provider, identifierType, identifierValue]);
+
+  return res.rows[0] || null;
+}
+
+async function updateIdentityMapping(db, {
+  companyId,
+  provider,
+  identifierType,
+  identifierValue,
+  metadataValue,
+  activeValue,
+  hasMetadata,
+  hasActive
+}) {
+  const updated = await db.query(`
+    UPDATE identity_mappings
+    SET metadata = CASE WHEN $5 THEN $1::jsonb ELSE metadata END,
+        active = CASE WHEN $6 THEN $2 ELSE active END,
+        updated_at = now()
+    WHERE company_id = $3 AND provider = $4 AND identifier_type = $7 AND identifier_value = $8
+    RETURNING company_id, provider, identifier_type, identifier_value, person_id,
+              active, metadata, created_at, updated_at
+  `, [
+    JSON.stringify(metadataValue || {}),
+    activeValue,
+    companyId,
+    provider,
+    hasMetadata,
+    hasActive && activeValue !== null,
+    identifierType,
+    identifierValue
+  ]);
+
+  return updated.rows[0] || null;
+}
+
 function buildListQuery({
   companyId,
   provider,
@@ -24,6 +68,7 @@ function buildListQuery({
   identifierValue,
   personId,
   active,
+  productSurface,
   limit,
   offset
 }) {
@@ -50,6 +95,15 @@ function buildListQuery({
     params.push(active);
     whereParts.push(`active = $${params.length}`);
   }
+  if (productSurface) {
+    whereParts.push(`EXISTS (
+      SELECT 1
+      FROM employees e
+      WHERE e.company_id = identity_mappings.company_id
+        AND e.person_id = identity_mappings.person_id
+        AND e.metadata->>'product_managed' = 'true'
+    )`);
+  }
 
   params.push(limit);
   params.push(offset);
@@ -74,6 +128,7 @@ async function listIdentityMappings(db, {
   identifierValue,
   personId,
   active,
+  productSurface,
   limit,
   offset
 }) {
@@ -88,6 +143,7 @@ async function listIdentityMappings(db, {
     identifierValue: normalizedIdentifierValue || null,
     personId: normalizedPersonId || null,
     active,
+    productSurface: productSurface === true,
     limit,
     offset
   });
@@ -99,18 +155,18 @@ async function getIdentityMapping(db, companyId, provider, identifierType, ident
   const normalizedProvider = normalizeLower(provider);
   const normalizedIdentifierType = normalizeLower(identifierType);
   const normalizedIdentifierValue = normalizeText(identifierValue);
-  const res = await db.query(`
-    SELECT company_id, provider, identifier_type, identifier_value, person_id,
-           active, metadata, created_at, updated_at
-    FROM identity_mappings
-    WHERE company_id = $1 AND provider = $2 AND identifier_type = $3 AND identifier_value = $4
-    LIMIT 1
-  `, [companyId, normalizedProvider, normalizedIdentifierType, normalizedIdentifierValue]);
-
-  return res.rows[0] || null;
+  return findIdentityMappingByNormalizedKey(
+    db,
+    companyId,
+    normalizedProvider,
+    normalizedIdentifierType,
+    normalizedIdentifierValue
+  );
 }
 
 async function upsertIdentityMapping(db, companyId, payload) {
+  // Canonical normalization lives here: provider/type => lower(trim), value => trim.
+  // The DB invariant is the existing identity_mappings primary key on these stored columns.
   const provider = normalizeLower(payload.provider);
   const identifierType = normalizeLower(payload.identifier_type);
   const identifierValue = normalizeText(payload.identifier_value);
@@ -145,15 +201,16 @@ async function upsertIdentityMapping(db, companyId, payload) {
       throw { code: 'employee_not_found' };
     }
 
-    const existing = await db.query(`
-      SELECT person_id
-      FROM identity_mappings
-      WHERE company_id = $1 AND provider = $2 AND identifier_type = $3 AND identifier_value = $4
-      LIMIT 1
-    `, [companyId, provider, identifierType, identifierValue]);
+    const existing = await findIdentityMappingByNormalizedKey(
+      db,
+      companyId,
+      provider,
+      identifierType,
+      identifierValue
+    );
 
-    if (existing.rows.length > 0) {
-      const existingPersonId = existing.rows[0].person_id;
+    if (existing) {
+      const existingPersonId = existing.person_id;
       if (existingPersonId !== personId) {
         throw {
           code: 'conflict_mapped_to_other_person',
@@ -161,27 +218,19 @@ async function upsertIdentityMapping(db, companyId, payload) {
         };
       }
 
-      const updated = await db.query(`
-        UPDATE identity_mappings
-        SET metadata = CASE WHEN $5 THEN $1::jsonb ELSE metadata END,
-            active = CASE WHEN $6 THEN $2 ELSE active END,
-            updated_at = now()
-        WHERE company_id = $3 AND provider = $4 AND identifier_type = $7 AND identifier_value = $8
-        RETURNING company_id, provider, identifier_type, identifier_value, person_id,
-                  active, metadata, created_at, updated_at
-      `, [
-        JSON.stringify(metadataValue || {}),
-        activeValue,
+      const updated = await updateIdentityMapping(db, {
         companyId,
         provider,
-        hasMetadata,
-        hasActive && activeValue !== null,
         identifierType,
-        identifierValue
-      ]);
+        identifierValue,
+        metadataValue,
+        activeValue,
+        hasMetadata,
+        hasActive
+      });
 
       await db.query('COMMIT');
-      return updated.rows[0];
+      return updated;
     }
 
     const inserted = await db.query(`
@@ -208,6 +257,36 @@ async function upsertIdentityMapping(db, companyId, payload) {
       await db.query('ROLLBACK');
     } catch (rollbackErr) {
       console.error('IDENTITY MAPPING UPSERT ROLLBACK FAILED:', rollbackErr);
+    }
+    if (err && err.code === '23505' && err.constraint === 'identity_mappings_pkey') {
+      const existing = await findIdentityMappingByNormalizedKey(
+        db,
+        companyId,
+        provider,
+        identifierType,
+        identifierValue
+      );
+      if (existing) {
+        if (existing.person_id !== personId) {
+          throw {
+            code: 'conflict_mapped_to_other_person',
+            existing_person_id: existing.person_id
+          };
+        }
+        const updated = await updateIdentityMapping(db, {
+          companyId,
+          provider,
+          identifierType,
+          identifierValue,
+          metadataValue,
+          activeValue,
+          hasMetadata,
+          hasActive
+        });
+        if (updated) {
+          return updated;
+        }
+      }
     }
     throw err;
   }

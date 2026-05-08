@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-08' }
 
 function To-Bool {
@@ -89,7 +91,7 @@ try {
     -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $true
       day_start_time = '04:00'

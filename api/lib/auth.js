@@ -1,6 +1,8 @@
 const { sendError } = require('./errorEnvelope');
 const { toBool } = require('../../services/envBool');
 const { resolveApiKeyRecord } = require('../../services/auth/apiKeyProvider');
+const { resolveSessionFromRequest } = require('../../services/auth/sessionAuth');
+const db = require('../../db');
 
 const ROLE_RANK = {
   viewer: 1,
@@ -24,6 +26,47 @@ function buildAuthError(res, status, error) {
     },
     error: isUnauthorized ? 'unauthorized' : 'forbidden'
   });
+}
+
+function getRequestOrigin(req) {
+  const value = req.get('origin') || req.get('referer') || '';
+  if (!value) {
+    return '';
+  }
+  try {
+    const parsed = new URL(value);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function getExpectedOrigin(req) {
+  const host = req.get('host');
+  if (!host) {
+    return '';
+  }
+  const proto = req.get('x-forwarded-proto') || req.protocol || 'http';
+  return `${proto}://${host}`;
+}
+
+function isUnsafeMethod(req) {
+  return !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
+}
+
+function enforceSessionOrigin(req, res) {
+  if (!isUnsafeMethod(req)) {
+    return true;
+  }
+  const origin = getRequestOrigin(req);
+  if (!origin) {
+    return true;
+  }
+  if (origin !== getExpectedOrigin(req)) {
+    buildAuthError(res, 403, 'csrf_origin_mismatch');
+    return false;
+  }
+  return true;
 }
 
 function getProvidedCompanyId(req) {
@@ -74,7 +117,29 @@ function requireApiKey(req, res, next) {
 
   const apiKey = req.get('x-api-key');
   if (!apiKey) {
-    return buildAuthError(res, 401, 'missing_api_key');
+    resolveSessionFromRequest(db, req)
+      .then(session => {
+        if (!session) {
+          return buildAuthError(res, 401, 'missing_credentials');
+        }
+        if (!enforceSessionOrigin(req, res)) {
+          return null;
+        }
+        req.ctx = {
+          company_id: session.company_id,
+          role: session.role,
+          user_id: session.user_id,
+          session_id: session.session_id,
+          auth_kind: 'session'
+        };
+        req.auth = req.ctx;
+        return next();
+      })
+      .catch(err => {
+        console.error('Session auth failed:', err);
+        return buildAuthError(res, 401, 'invalid_session');
+      });
+    return;
   }
 
   resolveApiKeyRecord(apiKey)
@@ -85,7 +150,8 @@ function requireApiKey(req, res, next) {
       req.ctx = {
         company_id: record.company_id,
         role: record.role,
-        key_id_or_prefix: record.key_id_or_prefix || null
+        key_id_or_prefix: record.key_id_or_prefix || null,
+        auth_kind: 'api_key'
       };
       req.auth = req.ctx;
       return next();
@@ -114,8 +180,35 @@ function requireRole(minRole) {
   };
 }
 
+function requireHumanSession(req, res, next) {
+  resolveSessionFromRequest(db, req)
+    .then(session => {
+      if (!session) {
+        return res.redirect('/login/');
+      }
+      if (!enforceSessionOrigin(req, res)) {
+        return null;
+      }
+      req.ctx = {
+        company_id: session.company_id,
+        role: session.role,
+        user_id: session.user_id,
+        session_id: session.session_id,
+        auth_kind: 'session'
+      };
+      req.auth = req.ctx;
+      return next();
+    })
+    .catch(err => {
+      console.error('Product session auth failed:', err);
+      return res.redirect('/login/');
+    });
+}
+
 module.exports = {
+  buildAuthError,
   requireApiKey,
+  requireHumanSession,
   requireRole,
   enforceCompanyScope,
   isAuthRequired

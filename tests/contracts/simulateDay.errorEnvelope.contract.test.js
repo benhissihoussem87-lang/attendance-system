@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { getCompanyId, operatorHeaders, requireAuth, viewerHeaders } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -68,12 +69,81 @@ function assertErrorEnvelope(body) {
 
 async function run() {
   const baseUrl = getBaseUrl();
+  const companyId = getCompanyId();
+  const authRequired = requireAuth();
+  const authHeaders = operatorHeaders();
+  const readOnlyHeaders = viewerHeaders();
+
+  if (authRequired) {
+    const unauthRes = await requestJson({
+      method: 'POST',
+      url: `${baseUrl}/api/simulate/day`,
+      headers: { 'content-type': 'application/json' },
+      body: {
+        company_id: companyId,
+        person_id: 'p1',
+        date: '2026-01-01'
+      }
+    });
+
+    assert.strictEqual(unauthRes.status, 401, 'missing API key should return 401');
+    assertErrorEnvelope(unauthRes.body);
+    assert.strictEqual(unauthRes.body.code, 'UNAUTHORIZED', 'missing API key code mismatch');
+    assert.ok(
+      unauthRes.body.details && unauthRes.body.details.kind === 'auth',
+      'missing API key details.kind should be auth'
+    );
+
+    const viewerRes = await requestJson({
+      method: 'POST',
+      url: `${baseUrl}/api/simulate/day`,
+      headers: { ...readOnlyHeaders, 'content-type': 'application/json' },
+      body: {
+        company_id: companyId,
+        person_id: 'p1',
+        date: '2026-01-01'
+      }
+    });
+    assert.strictEqual(viewerRes.status, 403, 'viewer API key should return 403 for simulate day write');
+    assertErrorEnvelope(viewerRes.body);
+    assert.strictEqual(viewerRes.body.code, 'FORBIDDEN', 'viewer forbidden code mismatch');
+    assert.ok(
+      viewerRes.body.details && viewerRes.body.details.kind === 'authz',
+      'viewer forbidden details.kind should be authz'
+    );
+    assert.strictEqual(
+      viewerRes.body.details.error,
+      'insufficient_role',
+      'viewer forbidden details.error mismatch'
+    );
+
+    const mismatchRes = await requestJson({
+      method: 'POST',
+      url: `${baseUrl}/api/simulate/day`,
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: {
+        company_id: 'OTHER',
+        person_id: 'p1',
+        date: '2026-01-01'
+      }
+    });
+
+    assert.strictEqual(mismatchRes.status, 403, 'cross-tenant request should return 403');
+    assertErrorEnvelope(mismatchRes.body);
+    assert.strictEqual(mismatchRes.body.code, 'FORBIDDEN', 'forbidden code mismatch');
+    assert.ok(
+      mismatchRes.body.details && mismatchRes.body.details.kind === 'authz',
+      'forbidden details.kind should be authz'
+    );
+    assert.strictEqual(mismatchRes.body.details.error, 'company_mismatch', 'forbidden details.error mismatch');
+  }
 
   const res = await requestJson({
     method: 'POST',
     url: `${baseUrl}/api/simulate/day`,
-    headers: { 'content-type': 'application/json' },
+    headers: { ...authHeaders, 'content-type': 'application/json' },
     body: {
+      company_id: companyId,
       date: '2026-01-01'
     }
   });

@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$companyId = 'DEFAULT'
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -14,8 +14,9 @@ $typeUpper = 'PIN'
 $typeLower = 'pin'
 $identifierValueSpaced = " AbC123_$runSuffix "
 $identifierValueTrimmed = "AbC123_$runSuffix"
-$personA = "norm_test_A_$runSuffix"
-$personB = "norm_test_B_$runSuffix"
+$personA = ("norm_test_a_$runSuffix").ToLowerInvariant()
+$personB = ("norm_test_b_$runSuffix").ToLowerInvariant()
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $encodedPersonA = [uri]::EscapeDataString($personA)
 $encodedPersonB = [uri]::EscapeDataString($personB)
 
@@ -168,7 +169,9 @@ try {
     exit 0
   }
 
-  $respA = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$encodedPersonA" @{
+  # Keep the person_id path segment explicit; PowerShell string interpolation around `?`
+  # must not collapse the route param into the query string.
+  $respA = Invoke-JsonRequest 'Put' "${baseUrl}/api/employees-registry/${encodedPersonA}?company_id=${encodedCompanyId}" @{
     company_id = $companyId
     employee_code = "EMP_NORM_A_$runSuffix"
     full_name = 'Norm Test A'
@@ -179,8 +182,26 @@ try {
     Write-Host $respA.text
     exit 1
   }
+  $getA = Invoke-JsonRequest 'Get' "${baseUrl}/api/employees-registry/${encodedPersonA}?company_id=${encodedCompanyId}" $null $operatorHeaders
+  if ($getA.status -ne 200) {
+    Write-Host "FAIL: employee registry get A status=$($getA.status)"
+    Write-Host $getA.text
+    exit 1
+  }
+  $actualPersonA = if ($getA.json) { $getA.json.person_id } else { $null }
+  $actualCompanyA = if ($getA.json) { $getA.json.company_id } else { $null }
+  if ([string]::IsNullOrWhiteSpace($actualPersonA)) {
+    Write-Host 'FAIL: employee registry get A person_id missing'
+    Write-Host $getA.text
+    exit 1
+  }
+  if ($actualCompanyA -and $actualCompanyA -ne $companyId) {
+    Write-Host "FAIL: employee registry get A company_id mismatch expected=$companyId actual=$actualCompanyA"
+    Write-Host $getA.text
+    exit 1
+  }
 
-  $respB = Invoke-JsonRequest 'Put' "$baseUrl/api/employees-registry/$encodedPersonB" @{
+  $respB = Invoke-JsonRequest 'Put' "${baseUrl}/api/employees-registry/${encodedPersonB}?company_id=${encodedCompanyId}" @{
     company_id = $companyId
     employee_code = "EMP_NORM_B_$runSuffix"
     full_name = 'Norm Test B'
@@ -191,8 +212,26 @@ try {
     Write-Host $respB.text
     exit 1
   }
+  $getB = Invoke-JsonRequest 'Get' "${baseUrl}/api/employees-registry/${encodedPersonB}?company_id=${encodedCompanyId}" $null $operatorHeaders
+  if ($getB.status -ne 200) {
+    Write-Host "FAIL: employee registry get B status=$($getB.status)"
+    Write-Host $getB.text
+    exit 1
+  }
+  $actualPersonB = if ($getB.json) { $getB.json.person_id } else { $null }
+  $actualCompanyB = if ($getB.json) { $getB.json.company_id } else { $null }
+  if ([string]::IsNullOrWhiteSpace($actualPersonB)) {
+    Write-Host 'FAIL: employee registry get B person_id missing'
+    Write-Host $getB.text
+    exit 1
+  }
+  if ($actualCompanyB -and $actualCompanyB -ne $companyId) {
+    Write-Host "FAIL: employee registry get B company_id mismatch expected=$companyId actual=$actualCompanyB"
+    Write-Host $getB.text
+    exit 1
+  }
 
-  $resp1 = Invoke-JsonRequest 'Put' "$baseUrl/api/identity-mappings" @{
+  $resp1 = Invoke-JsonRequest 'Put' "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" @{
     company_id = $companyId
     provider = $providerUpper
     identifier_type = $typeUpper
@@ -202,6 +241,7 @@ try {
   } $operatorHeaders
   if ($resp1.status -ne 200 -and $resp1.status -ne 201) {
     Write-Host "FAIL: mapping upsert #1 status=$($resp1.status)"
+    Write-Host "expected company_id=$companyId requested_person_id=$personA actualPersonA=$actualPersonA actualPersonB=$actualPersonB"
     Write-Host $resp1.text
     exit 1
   }
@@ -211,7 +251,7 @@ try {
     exit 1
   }
 
-  $resp2 = Invoke-JsonRequest 'Put' "$baseUrl/api/identity-mappings" @{
+  $resp2 = Invoke-JsonRequest 'Put' "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" @{
     company_id = $companyId
     provider = $providerLower
     identifier_type = $typeLower
@@ -225,7 +265,7 @@ try {
     exit 1
   }
 
-  $query = "$baseUrl/api/identity-mappings?company_id=$companyId&provider=$providerLower&identifier_type=$typeLower&identifier_value=$identifierValueTrimmed"
+  $query = "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}&provider=$([uri]::EscapeDataString($providerLower))&identifier_type=$([uri]::EscapeDataString($typeLower))&identifier_value=$([uri]::EscapeDataString($identifierValueTrimmed))"
   $list = Invoke-JsonRequest 'Get' $query $null $operatorHeaders
   if ($list.status -ne 200) {
     Write-Host "FAIL: mapping lookup status=$($list.status)"
@@ -239,27 +279,31 @@ try {
     exit 1
   }
   $row = $items[0]
-  if ($row.provider -ne $providerLower -or $row.identifier_type -ne $typeLower -or $row.identifier_value -ne $identifierValueTrimmed -or $row.person_id -ne $personA) {
+  if ($row.provider -ne $providerLower -or $row.identifier_type -ne $typeLower -or $row.identifier_value -ne $identifierValueTrimmed -or $row.person_id -ne $actualPersonA) {
     Write-Host "FAIL: unexpected row for normalized lookup"
     Write-Host ($row | ConvertTo-Json -Depth 6)
     exit 1
   }
 
-  $resp3 = Invoke-JsonRequest 'Put' "$baseUrl/api/identity-mappings" @{
+  # Reassigning the same normalized identifier to a different employee must stay a 409 conflict.
+  $upsert3Body = @{
     company_id = $companyId
     provider = $providerUpper
     identifier_type = $typeUpper
     identifier_value = $identifierValueTrimmed
     person_id = $personB
     active = $true
-  } $operatorHeaders
+  }
+  Write-Host ("DEBUG: mapping upsert #3 body=" + (($upsert3Body | Select-Object person_id, provider, identifier_type, identifier_value | ConvertTo-Json -Compress)))
+  $resp3 = Invoke-JsonRequest 'Put' "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" $upsert3Body $operatorHeaders
   if ($resp3.status -ne 409) {
     Write-Host "FAIL: mapping upsert #3 expected 409 got $($resp3.status)"
+    Write-Host "request company_id=$companyId provider=$providerUpper identifier_type=$typeUpper identifier_value=$identifierValueTrimmed person_id=$personB"
     Write-Host $resp3.text
     exit 1
   }
-  if (-not $resp3.json -or -not $resp3.json.details -or $resp3.json.details.existing_person_id -ne $personA) {
-    Write-Host "FAIL: mapping upsert #3 missing existing_person_id=$personA"
+  if (-not $resp3.json -or -not $resp3.json.details -or $resp3.json.details.existing_person_id -ne $actualPersonA) {
+    Write-Host "FAIL: mapping upsert #3 missing existing_person_id=$actualPersonA"
     Write-Host $resp3.text
     exit 1
   }

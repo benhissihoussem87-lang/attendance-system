@@ -25,9 +25,30 @@ function To-Bool {
   return $false
 }
 
+function Resolve-TestApiKey {
+  $candidates = @(
+    $env:TEST_API_KEY_ADMIN,
+    $env:TEST_API_KEY_OPERATOR,
+    $env:API_KEY
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate) {
+      $value = $candidate.ToString().Trim()
+      if ($value) {
+        return $value
+      }
+    }
+  }
+  return ''
+}
+
 function Get-ServerMode {
   param([string]$baseUrl)
   try {
+    $apiKey = Resolve-TestApiKey
+    if ($apiKey) {
+      return Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers @{ 'x-api-key' = $apiKey }
+    }
     return Invoke-RestMethod "$baseUrl/api/ops/test/mode"
   } catch {
     $script:ServerModeError = $_
@@ -209,9 +230,14 @@ Run-NodeTest 'contracts\previewOutput.contract.test.js'
 Run-NodeTest 'contracts\openapi.lint.test.js'
 Run-NodeTest 'contracts\openapi.coverage.test.js'
 Run-NodeTest 'contracts\openapi.fullCoverage.test.js'
+Run-NodeTest 'contracts\openapi.inventoryFreshness.test.js'
 Run-NodeTest 'contracts\openapi.deviceRegistry.coverage.test.js'
+Run-NodeTest 'contracts\openapi.lifecycleCoherence.coverage.test.js'
 Run-NodeTest 'contracts\devicesRegistry.contract.test.js'
 Run-NodeTest 'contracts\devices.errorEnvelope.contract.test.js'
+Run-NodeTest 'contracts\devices.operationalFilters.contract.test.js'
+Run-NodeTest 'contracts\boss.devicesOperationalCoherence.contract.test.js'
+Run-NodeTest 'contracts\companies.contract.test.js'
 Run-NodeTest 'contracts\companyProfile.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\employeeAssignments.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\attendance.errorEnvelope.contract.test.js'
@@ -219,12 +245,15 @@ Run-NodeTest 'contracts\deriveDayStatus.singleSource.test.js'
 Run-NodeTest 'contracts\resolutions.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\simulateDay.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\simulateRange.errorEnvelope.contract.test.js'
+Run-NodeTest 'contracts\simulationRun.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\policyProfiles.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\seedLeave.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\deviceEvents.jsonIngest.errorEnvelope.contract.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'contracts\db.devicesTable.smoke.test.js'
   Run-NodeTest 'contracts\db.coreConstraints.contract.test.js'
+  Run-NodeTest 'contracts\db.lifecycleCoherence.guardrails.contract.test.js'
+  Run-NodeTest 'contracts\db.deviceUidImmutability.behavior.test.js'
 } else {
   Write-Host 'SKIP: db devices table smoke (PG env vars not set)'
   Write-Host 'HINT: To enable DB smoke tests, copy .env.example to .env, then run: . .\scripts\db\load-env.ps1'
@@ -233,6 +262,24 @@ Run-NodeTest 'contracts\employeesRegistry.contract.test.js'
 Run-NodeTest 'contracts\employeesRegistry.errorEnvelope.contract.test.js'
 Run-NodeTest 'contracts\identityMappings.lookup.contract.test.js'
 Run-NodeTest 'contracts\identityMappings.errorEnvelope.contract.test.js'
+Run-NodeTest 'contracts\demo_golden_path.contract.test.js'
+Run-NodeTest 'contracts\agentBridge.foundation.contract.test.js'
+Run-NodeTest 'contracts\agentBridge.discoveryPayload.contract.test.js'
+Run-NodeTest 'contracts\agentDeviceEvents.contract.test.js'
+Run-NodeTest 'contracts\agentBridge.eventIngestion.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.commandsLifecycle.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.agents.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.sites.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.siteActiveLease.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.deviceEventBatches.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.lifecycleIntegrity.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.lifecycleReconciliationDryRun.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.lifecycleReconciliationRepair.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.deviceRemediation.errorEnvelope.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.bindingQueueEnforcement.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.deviceMonitoringSessions.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.realtimeObservations.contract.test.js'
+Run-NodeTest 'contracts\agentAdmin.realtimeObservationsSse.contract.test.js'
 Run-NodeTest 'device_events\identity_context_fallback_keys.test.js'
 if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Run-NodeTest 'device_events\device_autoregister_from_ingest.test.js'
@@ -241,6 +288,20 @@ if ($env:PGHOST -and $env:PGUSER -and $env:PGDATABASE) {
   Write-Host 'HINT: To enable DB smoke tests, copy .env.example to .env, then run: . .\scripts\db\load-env.ps1'
 }
 Run-NodeTest 'adapters\simplePinCsvAdapter_dates.test.js'
+Run-NodeTest 'agent_discovery\zktecoAdapter.discovery.test.js'
+Run-NodeTest 'agent_discovery\discoveryProbe.cli.test.js'
+Run-NodeTest 'agent_events\zktecoPullAdapter.pull.test.js'
+Run-NodeTest 'agent_events\eventBatchBuffer.test.js'
+Run-NodeTest 'agent_events\pullEventsProbe.cli.test.js'
+Run-NodeTest 'services\agentBridgeDb.discoveryIdentity.test.js'
+Run-NodeTest 'services\agentBridgeDb.lifecycle.test.js'
+Run-NodeTest 'services\agentBridgeDb.lifecycleEvents.test.js'
+Run-NodeTest 'services\agentBridgeDb.lifecycleReconciliationRepair.test.js'
+Run-NodeTest 'services\agentBridgeDb.managingBinding.test.js'
+Run-NodeTest 'services\sitesDb.test.js'
+Run-NodeTest 'services\reportedStateDb.test.js'
+Run-NodeTest 'services\agentDeviceEventsService.test.js'
+Run-NodeTest 'services\deviceManageability.test.js'
 
 foreach ($script in $scriptList) {
   $path = Join-Path $PSScriptRoot $script

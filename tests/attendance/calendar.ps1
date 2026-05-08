@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-07' }
 $goldenPath = Join-Path $PSScriptRoot '..\golden\attendance_calendar.json'
 
@@ -125,7 +127,7 @@ try {
   }
 
   $resetBody = @{
-    company_id = 'DEFAULT'
+    company_id = $companyId
     company_timezone = 'Africa/Tunis'
     night_shift_enabled = $false
     day_start_time = '04:00'
@@ -149,8 +151,8 @@ try {
     -ContentType 'application/json' `
     -Body ($resetBody | ConvertTo-Json -Depth 5) | Out-Null
 
-  Invoke-RestMethod "$baseUrl/api/attendance?date=$date" -Headers $operatorHeaders | Out-Null
-  $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date" -Headers $operatorHeaders
+  Invoke-RestMethod "${baseUrl}/api/attendance?date=$date&company_id=${encodedCompanyId}" -Headers $operatorHeaders | Out-Null
+  $res = Invoke-RestMethod "${baseUrl}/api/attendance?date=$date&company_id=${encodedCompanyId}" -Headers $operatorHeaders
   $expectedRaw = Get-Content -Raw $goldenPath
   $expected = $expectedRaw | ConvertFrom-Json
 

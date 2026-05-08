@@ -104,6 +104,7 @@ function buildComputedPayload(data, signature, assignmentResolution) {
   }
   return {
     status: data.status,
+    reason_code: data.reason_code || null,
     rule_set_id: data.rule_set_id || null,
     flags: Array.isArray(data.flags) ? data.flags : [],
     metrics: {
@@ -318,9 +319,13 @@ router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async
         if (ENABLE_CACHE_DIAGNOSTIC) {
           console.log('[cache] RETURNING CACHE HIT');
         }
-        const explanationOut = parsedExplanation && Array.isArray(parsedExplanation.explanation)
+      const explanationOut = parsedExplanation && Array.isArray(parsedExplanation.explanation)
           ? parsedExplanation.explanation
           : cachedRow.explanation;
+        const cachedDecision = parsedExplanation && parsedExplanation.decision_snapshot &&
+          typeof parsedExplanation.decision_snapshot === 'object'
+          ? parsedExplanation.decision_snapshot
+          : null;
         const { id: cachedId, ...cachedData } = cachedRow;
         if (ruleSetIdParam && cachedRow.rule_set_id !== ruleSetIdParam) {
           cacheMeta = {
@@ -332,6 +337,14 @@ router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async
         computedExplanation = explanationOut;
         computedResult = {
           ...cachedData,
+          reason_code: cachedDecision && cachedDecision.reason_code ? cachedDecision.reason_code : null,
+          flags: cachedDecision && Array.isArray(cachedDecision.flags) ? cachedDecision.flags : [],
+          break_minutes: cachedDecision && typeof cachedDecision.break_minutes === 'number'
+            ? cachedDecision.break_minutes
+            : null,
+          net_worked_minutes: cachedDecision && typeof cachedDecision.net_worked_minutes === 'number'
+            ? cachedDecision.net_worked_minutes
+            : null,
           explanation: explanationOut
         };
         computedSource = 'db';
@@ -380,6 +393,13 @@ router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async
       // 4: Save result to DB
       const explanationPayload = {
         explanation: result.explanation,
+        decision_snapshot: {
+          status: result.status,
+          reason_code: result.reason_code || null,
+          flags: Array.isArray(result.flags) ? result.flags : [],
+          break_minutes: result.break_minutes ?? null,
+          net_worked_minutes: result.net_worked_minutes ?? null
+        },
         computation_context: {
           ...signature,
           rule_set_selection: ruleSetSelection
@@ -449,6 +469,7 @@ router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async
 
     const computed = buildComputedPayload({
       status: computedResult.status,
+      reason_code: computedResult.reason_code,
       flags: computedResult.flags,
       rule_set_id: computedResult.rule_set_id,
       worked_minutes: computedResult.worked_minutes,

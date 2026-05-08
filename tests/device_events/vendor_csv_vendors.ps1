@@ -1,7 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$companyId = 'DEFAULT'
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $date = '2026-01-26'
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
@@ -121,11 +122,12 @@ try {
   # Seed employees registry once.
   foreach ($personId in $personIds) {
     $encodedPersonId = [uri]::EscapeDataString($personId)
-    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$companyId" `
+    Invoke-RestMethod "${baseUrl}/api/employees-registry/${encodedPersonId}?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
+        company_id = $companyId
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
   }
@@ -139,11 +141,12 @@ try {
 
     # Seed identity mappings per vendor provider.
     foreach ($personId in $personIds) {
-      Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$companyId" `
+      Invoke-RestMethod "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" `
         -Method Put `
         -Headers $operatorHeaders `
         -ContentType 'application/json' `
         -Body (@{
+          company_id = $companyId
           provider = $vendorId
           identifier_type = 'pin'
           identifier_value = $personId
@@ -157,7 +160,7 @@ try {
     $headers['x-company-id'] = $companyId
     $headers['x-vendor'] = $vendorId
 
-    $preview = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=$companyId" `
+    $preview = Invoke-RestMethod "${baseUrl}/api/device-events/import/preview?company_id=${encodedCompanyId}" `
       -Method Post `
       -Headers $headers `
       -ContentType 'text/csv' `
@@ -169,7 +172,7 @@ try {
 
     $totalRows = [int]$preview.total_rows
 
-    $commit = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=$companyId" `
+    $commit = Invoke-RestMethod "${baseUrl}/api/device-events/import/commit?company_id=${encodedCompanyId}" `
       -Method Post `
       -Headers $headers `
       -ContentType 'text/csv' `
@@ -181,7 +184,7 @@ try {
   }
 
   foreach ($personId in $personIds) {
-    $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=$companyId" -Headers $operatorHeaders
+    $res = Invoke-RestMethod "${baseUrl}/api/attendance?date=$date&person_id=$personId&company_id=${encodedCompanyId}" -Headers $operatorHeaders
     $source = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value } else { $res }
     $arr = @($source)
     if ($arr.Count -lt 1) {

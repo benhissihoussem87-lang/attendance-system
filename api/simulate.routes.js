@@ -22,6 +22,8 @@ const {
   SYSTEM_VERSION
 } = require('../contracts/systemContracts');
 const { toBool } = require('../services/envBool');
+const { applyRuleSetOverride } = require('../services/simulateRuleSetOverride');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 const { sendError } = require('./lib/errorEnvelope');
 
 const USE_DERIVED_WORK_DATE = toBool(process.env.USE_DERIVED_WORK_DATE);
@@ -62,6 +64,7 @@ function sendInternalError(res) {
 function buildComputedPayload(data, computationContext) {
   return {
     status: data.status,
+    reason_code: data.reason_code || null,
     rule_set_id: data.rule_set_id || null,
     flags: Array.isArray(data.flags) ? data.flags : [],
     metrics: {
@@ -77,6 +80,61 @@ function buildComputedPayload(data, computationContext) {
   };
 }
 
+function buildSimulationRecord({
+  employeeCode,
+  result,
+  nonWorkingDay,
+  onLeave
+}) {
+  if (nonWorkingDay) {
+    return {
+      system_version: SYSTEM_VERSION,
+      contract: ATTENDANCE_OUTPUT_CONTRACT,
+      engine_contract: ENGINE_CONTRACT,
+      engine_version: ENGINE_VERSION,
+      employee: employeeCode,
+      status: 'NON_WORKING_DAY',
+      first_in: null,
+      last_out: null,
+      worked_minutes: 0,
+      late_minutes: 0,
+      break_minutes: 0,
+      net_worked_minutes: 0,
+      explanation: ['Non-working day (company policy)'],
+      source: 'simulation'
+    };
+  }
+
+  if (onLeave) {
+    return {
+      system_version: SYSTEM_VERSION,
+      contract: ATTENDANCE_OUTPUT_CONTRACT,
+      engine_contract: ENGINE_CONTRACT,
+      engine_version: ENGINE_VERSION,
+      employee: employeeCode,
+      status: 'ON_LEAVE',
+      first_in: null,
+      last_out: null,
+      worked_minutes: 0,
+      late_minutes: 0,
+      break_minutes: 0,
+      net_worked_minutes: 0,
+      explanation: ['Employee on leave'],
+      source: 'simulation'
+    };
+  }
+
+  return {
+    system_version: SYSTEM_VERSION,
+    contract: ATTENDANCE_OUTPUT_CONTRACT,
+    engine_contract: ENGINE_CONTRACT,
+    engine_version: ENGINE_VERSION,
+    employee: employeeCode,
+    ...result,
+    source: 'simulation'
+  };
+}
+
 function getEmployeeByPersonId(personId) {
   const match = employees.find(employee => employee.person_id === personId);
   return match || employees[0];
@@ -88,73 +146,6 @@ function isPlainObject(value) {
 
 function isFiniteNonNegativeNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
-}
-
-function setLateThresholdOnObject(obj, value) {
-  if (!isPlainObject(obj)) {
-    return;
-  }
-  obj.late_threshold_minutes = value;
-  obj.lateThresholdMinutes = value;
-  obj.threshold_minutes = value;
-  obj.thresholdMinutes = value;
-  obj.threshold = value;
-  obj.minutes = value;
-  obj.grace_minutes = value;
-  obj.graceMinutes = value;
-  obj.grace_period_minutes = value;
-  obj.gracePeriodMinutes = value;
-}
-
-function patchLateThresholdRecursive(node, value) {
-  if (Array.isArray(node)) {
-    node.forEach(item => patchLateThresholdRecursive(item, value));
-    return;
-  }
-  if (!isPlainObject(node)) {
-    return;
-  }
-
-  const code = node.code || node.rule_code;
-  if (code === 'LATE_THRESHOLD') {
-    if (!isPlainObject(node.params)) {
-      node.params = {};
-    }
-    setLateThresholdOnObject(node.params, value);
-    setLateThresholdOnObject(node, value);
-  }
-
-  if (isPlainObject(node.params)) {
-    setLateThresholdOnObject(node.params, value);
-  }
-  if (isPlainObject(node.config)) {
-    setLateThresholdOnObject(node.config, value);
-  }
-
-  Object.keys(node).forEach(key => {
-    patchLateThresholdRecursive(node[key], value);
-  });
-}
-
-function applyRuleSetOverride(ruleSet, override) {
-  if (!override || !isPlainObject(override)) {
-    return ruleSet;
-  }
-
-  const cloned = JSON.parse(JSON.stringify(ruleSet || {}));
-  if (isFiniteNonNegativeNumber(override.late_threshold_minutes)) {
-    const value = override.late_threshold_minutes;
-    setLateThresholdOnObject(cloned, value);
-    if (isPlainObject(cloned.params)) {
-      setLateThresholdOnObject(cloned.params, value);
-    }
-    if (isPlainObject(cloned.config)) {
-      setLateThresholdOnObject(cloned.config, value);
-    }
-    patchLateThresholdRecursive(cloned, value);
-  }
-
-  return cloned;
 }
 
 function parseDate(value) {
@@ -189,7 +180,7 @@ function applyPolicyOverride(profile, override) {
   };
 }
 
-router.post('/day', async (req, res) => {
+router.post('/day', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   try {
     const {
       company_id,
@@ -228,7 +219,9 @@ router.post('/day', async (req, res) => {
       return sendValidationError(res, 'policy_override_invalid', 'policy_override must be an object');
     }
 
-    const companyId = company_id || 'DEFAULT';
+    const companyId = (req.ctx && req.ctx.company_id)
+      ? req.ctx.company_id
+      : (company_id || 'DEFAULT');
     const companyConfig = await getCompanyConfig(db, companyId);
     const signature = buildComputationSignature(companyConfig, {
       use_derived_work_date: USE_DERIVED_WORK_DATE
@@ -330,6 +323,7 @@ router.post('/day', async (req, res) => {
 
     const computed = buildComputedPayload({
       status: result.status,
+      reason_code: result.reason_code,
       flags: result.flags,
       rule_set_id: result.rule_set_id,
       worked_minutes: result.worked_minutes,
@@ -350,52 +344,12 @@ router.post('/day', async (req, res) => {
       policy_profile: policyProfile
     });
 
-    let record;
-    if (nonWorkingDay) {
-      record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        status: 'NON_WORKING_DAY',
-        first_in: null,
-        last_out: null,
-        worked_minutes: 0,
-        late_minutes: 0,
-        break_minutes: 0,
-        net_worked_minutes: 0,
-        explanation: ['Non-working day (company policy)'],
-        source: 'simulation'
-      };
-    } else if (onLeave) {
-      record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        status: 'ON_LEAVE',
-        first_in: null,
-        last_out: null,
-        worked_minutes: 0,
-        late_minutes: 0,
-        break_minutes: 0,
-        net_worked_minutes: 0,
-        explanation: ['Employee on leave'],
-        source: 'simulation'
-      };
-    } else {
-      record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        ...result,
-        source: 'simulation'
-      };
-    }
+    const record = buildSimulationRecord({
+      employeeCode: employee.employee_code,
+      result,
+      nonWorkingDay,
+      onLeave
+    });
 
     record.attendance_day_id = null;
     record.computed = computed;
@@ -414,7 +368,7 @@ router.post('/day', async (req, res) => {
   }
 });
 
-router.post('/range', async (req, res) => {
+router.post('/range', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   try {
     const {
       company_id,
@@ -468,7 +422,9 @@ router.post('/range', async (req, res) => {
       return sendValidationError(res, 'date_range_too_large', 'date range too large');
     }
 
-    const companyId = company_id || 'DEFAULT';
+    const companyId = (req.ctx && req.ctx.company_id)
+      ? req.ctx.company_id
+      : (company_id || 'DEFAULT');
     const companyConfig = await getCompanyConfig(db, companyId);
     const signature = buildComputationSignature(companyConfig, {
       use_derived_work_date: USE_DERIVED_WORK_DATE
@@ -603,6 +559,7 @@ router.post('/range', async (req, res) => {
 
       const computed = buildComputedPayload({
         status: result.status,
+        reason_code: result.reason_code,
         flags: result.flags,
         rule_set_id: result.rule_set_id,
         worked_minutes: result.worked_minutes,
@@ -626,15 +583,12 @@ router.post('/range', async (req, res) => {
         policy_profile: policyProfile
       });
 
-      const record = {
-        system_version: SYSTEM_VERSION,
-        contract: ATTENDANCE_OUTPUT_CONTRACT,
-        engine_contract: ENGINE_CONTRACT,
-        engine_version: ENGINE_VERSION,
-        employee: employee.employee_code,
-        ...result,
-        source: 'simulation'
-      };
+      const record = buildSimulationRecord({
+        employeeCode: employee.employee_code,
+        result,
+        nonWorkingDay,
+        onLeave
+      });
 
       record.person_id = person_id;
       record.work_date = workDate;

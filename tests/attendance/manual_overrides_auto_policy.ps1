@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $date = if ($env:ATTENDANCE_DATE) { $env:ATTENDANCE_DATE } else { '2026-01-14' }
 $runId = if ($env:CI_RUN_ID) { $env:CI_RUN_ID } else { ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -93,7 +95,7 @@ try {
     -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $false
       day_start_time = '04:00'
@@ -108,12 +110,12 @@ try {
     -ContentType 'application/json' `
     -Body (@{
       person_id = $personId
-      company_id = 'DEFAULT'
+      company_id = $companyId
       date = $date
       affects_attendance = $true
     } | ConvertTo-Json -Depth 5) | Out-Null
 
-  $firstRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=DEFAULT" -Headers $operatorHeaders
+  $firstRaw = Invoke-RestMethod "${baseUrl}/api/attendance?date=$date&person_id=$personId&company_id=${encodedCompanyId}" -Headers $operatorHeaders
   $firstVal = Unwrap-Value $firstRaw
   $firstArr = @($firstVal)
   if (-not $firstArr -or $firstArr.Count -eq 0) {
@@ -137,7 +139,7 @@ try {
     -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       decided_by = 'HR1'
       effective_status = 'EXCUSED'
       reason_code = 'OVERRIDE_AUTO_POLICY'
@@ -146,7 +148,7 @@ try {
     throw 'manual overrides auto policy: expected resolution id'
   }
 
-  $secondRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=DEFAULT" -Headers $operatorHeaders
+  $secondRaw = Invoke-RestMethod "${baseUrl}/api/attendance?date=$date&person_id=$personId&company_id=${encodedCompanyId}" -Headers $operatorHeaders
   $secondVal = Unwrap-Value $secondRaw
   $secondArr = @($secondVal)
   if (-not $secondArr -or $secondArr.Count -eq 0) {

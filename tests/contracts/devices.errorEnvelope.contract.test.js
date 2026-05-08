@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { getCompanyId, operatorHeaders, requireAuth } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -68,11 +69,29 @@ function assertErrorEnvelope(body) {
 
 async function run() {
   const baseUrl = getBaseUrl();
+  const companyId = getCompanyId();
+  const authRequired = requireAuth();
+  const authHeaders = operatorHeaders();
 
   const missingDeviceUid = `missing-${Math.random().toString(16).slice(2, 10)}`;
+  if (authRequired) {
+    const unauthRes = await requestJson({
+      method: 'GET',
+      url: `${baseUrl}/api/devices/${encodeURIComponent(missingDeviceUid)}?company_id=${encodeURIComponent(companyId)}`
+    });
+    assert.strictEqual(unauthRes.status, 401, 'missing API key should return 401');
+    assertErrorEnvelope(unauthRes.body);
+    assert.strictEqual(unauthRes.body.code, 'UNAUTHORIZED', 'missing API key code mismatch');
+    assert.ok(
+      unauthRes.body.details && unauthRes.body.details.kind === 'auth',
+      'missing API key details.kind should be auth'
+    );
+  }
+
   const missingRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/devices/${encodeURIComponent(missingDeviceUid)}?company_id=DEFAULT`
+    url: `${baseUrl}/api/devices/${encodeURIComponent(missingDeviceUid)}?company_id=${encodeURIComponent(companyId)}`,
+    headers: { ...authHeaders }
   });
 
   assert.strictEqual(missingRes.status, 404, 'missing device should return 404');
@@ -90,20 +109,33 @@ async function run() {
 
   const mismatchRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/devices/DEV-MISMATCH?company_id=DEFAULT`,
-    headers: { 'content-type': 'application/json' },
+    url: `${baseUrl}/api/devices/DEV-MISMATCH?company_id=${encodeURIComponent(companyId)}`,
+    headers: { ...authHeaders, 'content-type': 'application/json' },
     body: {
       company_id: 'OTHER'
     }
   });
 
-  assert.strictEqual(mismatchRes.status, 400, 'company_id mismatch should return 400');
-  assertErrorEnvelope(mismatchRes.body);
-  assert.strictEqual(mismatchRes.body.code, 'VALIDATION_ERROR', 'validation code mismatch');
-  assert.ok(
-    mismatchRes.body.details && mismatchRes.body.details.kind === 'validation',
-    'validation details.kind should be validation'
+  assert.strictEqual(
+    mismatchRes.status,
+    authRequired ? 403 : 400,
+    `company_id mismatch should return ${authRequired ? 403 : 400}`
   );
+  assertErrorEnvelope(mismatchRes.body);
+  if (authRequired) {
+    assert.strictEqual(mismatchRes.body.code, 'FORBIDDEN', 'forbidden code mismatch');
+    assert.ok(
+      mismatchRes.body.details && mismatchRes.body.details.kind === 'authz',
+      'forbidden details.kind should be authz'
+    );
+    assert.strictEqual(mismatchRes.body.details.error, 'company_mismatch', 'forbidden details.error mismatch');
+  } else {
+    assert.strictEqual(mismatchRes.body.code, 'VALIDATION_ERROR', 'validation code mismatch');
+    assert.ok(
+      mismatchRes.body.details && mismatchRes.body.details.kind === 'validation',
+      'validation details.kind should be validation'
+    );
+  }
 
   console.log('devices error envelope contract tests passed');
 }

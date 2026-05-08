@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -130,7 +131,7 @@ try {
   $ruleB = $seedB.rule_set_id
   if (-not $ruleB) { throw 'seed-ruleset did not return rule_set_id for rule B' }
 
-  Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$([uri]::EscapeDataString($companyId))" `
     -Method Put `
     -Headers $operatorHeaders `
     -ContentType 'application/json' `
@@ -139,12 +140,12 @@ try {
       metadata = @{}
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" -Headers $operatorHeaders
+  $employee = Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$([uri]::EscapeDataString($companyId))" -Headers $operatorHeaders
   if ($employee.default_rule_set_id -ne $ruleA) {
     throw 'expected employee default_rule_set_id to match rule A'
   }
 
-  Invoke-RestMethod "$baseUrl/api/employee-assignments?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employee-assignments?company_id=$([uri]::EscapeDataString($companyId))" `
     -Method Put `
     -Headers $operatorHeaders `
     -ContentType 'application/json' `
@@ -161,7 +162,7 @@ try {
     -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $true
       day_start_time = '04:00'
@@ -173,7 +174,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $withinRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateWithin&person_id=$personId&company_id=DEFAULT" -Headers $operatorHeaders
+  $withinRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateWithin&person_id=$personId&company_id=$([uri]::EscapeDataString($companyId))" -Headers $operatorHeaders
   $within = Unwrap-Value $withinRaw
   $withinArr = @($within)
   if (-not $withinArr -or $withinArr.Count -eq 0) { throw 'no attendance data returned for within date' }
@@ -202,7 +203,7 @@ try {
     -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $true
       day_start_time = '04:00'
@@ -214,7 +215,7 @@ try {
       )
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $beforeRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateBefore&person_id=$personId&company_id=DEFAULT" -Headers $operatorHeaders
+  $beforeRaw = Invoke-RestMethod "$baseUrl/api/attendance?date=$dateBefore&person_id=$personId&company_id=$([uri]::EscapeDataString($companyId))" -Headers $operatorHeaders
   $before = Unwrap-Value $beforeRaw
   $beforeArr = @($before)
   if (-not $beforeArr -or $beforeArr.Count -eq 0) { throw 'no attendance data returned for before date' }

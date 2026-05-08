@@ -73,7 +73,7 @@ jobs:
         id: run_suite
         continue-on-error: true
         shell: pwsh
-        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor -RequireAuthForAuthTests
+        run: pwsh -NoProfile -File ./tests/run-suite.ps1 -LoadEnv:$false -IdentityMappingPolicy vendor
       - name: "Debug: show run-suite logs"
         if: always()
         shell: pwsh
@@ -135,32 +135,19 @@ jobs:
             Write-Error "package-lock.json is required for CI. Please commit it."
             exit 1
           }
-      - name: Fast Checks
+      - name: Windows Smoke Core Checks
         id: fast_checks
         continue-on-error: true
         shell: pwsh
         run: |
-          $packageJsonPath = Join-Path $PWD 'package.json'
-          if (-not (Test-Path $packageJsonPath)) {
-            Write-Host 'SKIP: package.json missing'
-            exit 0
-          }
-          $packageJson = Get-Content -Raw $packageJsonPath | ConvertFrom-Json
-          $scripts = @{}
-          if ($null -ne $packageJson.scripts) {
-            $packageJson.scripts.PSObject.Properties | ForEach-Object { $scripts[$_.Name] = $true }
-          }
-          $ordered = @('lint', 'typecheck', 'openapi:lint', 'openapi:coverage')
-          foreach ($name in $ordered) {
-            if ($scripts.ContainsKey($name)) {
-              npm run $name
-              if ($LASTEXITCODE -ne 0) {
-                exit $LASTEXITCODE
-              }
-            } else {
-              Write-Host "SKIP: npm run $name (missing)"
-            }
-          }
+          node .\tests\contracts\openapi.lint.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node .\tests\contracts\openapi.coverage.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node .\tests\contracts\openapi.fullCoverage.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node .\tests\contracts\openapi.inventoryFreshness.test.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: "Debug: windows env"
         if: always()
         shell: pwsh

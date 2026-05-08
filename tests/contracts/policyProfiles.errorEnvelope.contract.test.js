@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { adminHeaders, getCompanyId, requireAuth } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...adminHeaders(), ...headers }
     };
 
     let payload = null;
@@ -66,17 +67,36 @@ function assertErrorEnvelope(body) {
   ensureString(body.message, 'error.message');
 }
 
+function logUnexpectedValidation(label, response, expectedStatus, expectedDetailError) {
+  const actualDetailError = response && response.body && response.body.details
+    ? response.body.details.error
+    : null;
+  if (response && response.status === expectedStatus && actualDetailError === expectedDetailError) {
+    return;
+  }
+  const body = response && response.body !== undefined
+    ? JSON.stringify(response.body)
+    : 'null';
+  console.error(`${label} unexpected response: status=${response ? response.status : 'null'} body=${body}`);
+}
+
 async function run() {
   const baseUrl = getBaseUrl();
+  const companyId = getCompanyId();
+  const authRequired = requireAuth();
+  const expectedDetailError = authRequired ? 'name_required' : 'company_id_required';
 
   const res = await requestJson({
     method: 'POST',
-    url: `${baseUrl}/api/policy-profiles`,
+    url: authRequired
+      ? `${baseUrl}/api/policy-profiles?company_id=${encodeURIComponent(companyId)}`
+      : `${baseUrl}/api/policy-profiles`,
     headers: { 'content-type': 'application/json' },
     body: {}
   });
 
-  assert.strictEqual(res.status, 400, 'missing company_id should return 400');
+  logUnexpectedValidation('policyProfilesValidation', res, 400, expectedDetailError);
+  assert.strictEqual(res.status, 400, `expected 400 for missing ${authRequired ? 'name' : 'company_id'}`);
   assertErrorEnvelope(res.body);
   assert.strictEqual(res.body.code, 'VALIDATION_ERROR', 'validation code mismatch');
   assert.strictEqual(res.body.message, 'Validation failed', 'validation message mismatch');
@@ -86,7 +106,7 @@ async function run() {
   );
   assert.strictEqual(
     res.body.details.error,
-    'company_id_required',
+    expectedDetailError,
     'validation details.error mismatch'
   );
 

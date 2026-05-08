@@ -56,6 +56,14 @@ function parseActive(value) {
   return null;
 }
 
+function parseBooleanFlag(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
 router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
@@ -94,6 +102,7 @@ router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async
       identifierValue,
       personId,
       active,
+      productSurface: parseBooleanFlag(req.query.product_surface),
       limit: parseLimit(req.query.limit),
       offset: parseOffset(req.query.offset)
     });

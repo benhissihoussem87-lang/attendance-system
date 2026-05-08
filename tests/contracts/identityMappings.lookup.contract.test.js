@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { adminHeaders, getCompanyId, operatorHeaders } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...operatorHeaders(), ...headers }
     };
 
     let payload = null;
@@ -69,7 +70,8 @@ function assertErrorEnvelope(body) {
 async function fetchMode(baseUrl) {
   const res = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/ops/test/mode`
+    url: `${baseUrl}/api/ops/test/mode`,
+    headers: adminHeaders()
   });
   if (res.status === 404) {
     throw new Error('ALLOW_TEST_ENDPOINTS is not enabled; /api/ops/test/mode returned 404');
@@ -88,6 +90,7 @@ async function run() {
     throw new Error('ALLOW_TEST_ENDPOINTS must be enabled for contract tests');
   }
 
+  const companyId = getCompanyId();
   const runId = Math.random().toString(16).slice(2, 10);
   const personId = `identity_contract_${runId}`;
   const identifierValue = `ZK-${runId}`;
@@ -101,7 +104,7 @@ async function run() {
 
   const employeeRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(personId)}?company_id=DEFAULT`,
+    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(personId)}?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: employeeBody
   });
@@ -118,7 +121,7 @@ async function run() {
 
   const mappingRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: mappingBody
   });
@@ -126,7 +129,7 @@ async function run() {
 
   const lookupRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=${encodeURIComponent(identifierValue)}`
+    url: `${baseUrl}/api/identity-mappings/lookup?company_id=${encodeURIComponent(companyId)}&provider=zkteco&identifier_type=pin&identifier_value=${encodeURIComponent(identifierValue)}`
   });
   assert.strictEqual(lookupRes.status, 200, 'identity mapping lookup should return 200');
   assert.ok(lookupRes.body && typeof lookupRes.body === 'object', 'lookup should return a body');
@@ -134,7 +137,7 @@ async function run() {
 
   const missingParamsRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/identity-mappings/lookup?company_id=DEFAULT`
+    url: `${baseUrl}/api/identity-mappings/lookup?company_id=${encodeURIComponent(companyId)}`
   });
   assert.strictEqual(missingParamsRes.status, 400, 'missing params should return 400');
   assertErrorEnvelope(missingParamsRes.body);
@@ -147,7 +150,7 @@ async function run() {
   const missingValue = `ZK-UNKNOWN-${runId}`;
   const missingRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/identity-mappings/lookup?company_id=DEFAULT&provider=zkteco&identifier_type=pin&identifier_value=${encodeURIComponent(missingValue)}`
+    url: `${baseUrl}/api/identity-mappings/lookup?company_id=${encodeURIComponent(companyId)}&provider=zkteco&identifier_type=pin&identifier_value=${encodeURIComponent(missingValue)}`
   });
   assert.strictEqual(missingRes.status, 404, 'missing lookup should return 404');
   assertErrorEnvelope(missingRes.body);

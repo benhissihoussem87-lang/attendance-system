@@ -7,6 +7,7 @@ const {
   getCompanyProfile,
   upsertCompanyProfile
 } = require('../services/companyProfileDb');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 
 function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
@@ -25,6 +26,10 @@ function resolveCompanyId(req, body) {
   }
   if (bodyId && headerId && bodyId !== headerId) {
     return { error: 'company_id mismatch between body and header' };
+  }
+
+  if (req.ctx && req.ctx.company_id) {
+    return { value: req.ctx.company_id };
   }
 
   return { value: bodyId || queryId || headerId || 'DEFAULT' };
@@ -63,7 +68,7 @@ function sendInternalError(res) {
   });
 }
 
-router.get('/', async (req, res) => {
+router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
@@ -81,7 +86,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.put('/', async (req, res) => {
+router.put('/', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, req.body || {});
     if (resolved.error) {

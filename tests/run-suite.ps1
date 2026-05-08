@@ -40,6 +40,8 @@ $script:HadPort = $false
 $script:PortPrev = $null
 $script:HadCiRunId = $false
 $script:CiRunIdPrev = $null
+$script:HadSeedProfile = $false
+$script:SeedProfilePrev = $null
 
 function Write-Section([string]$title) {
   Write-Host ''
@@ -98,15 +100,131 @@ function Wait-ForPort([string]$hostName, [int]$portNumber, [int]$timeoutSeconds,
 }
 
 function Get-ServerModeWithRetry([string]$baseUrl, [int]$timeoutSeconds) {
+  $apiKey = Resolve-TestApiKey
+  $headers = $null
+  if ($apiKey) {
+    $headers = @{ 'x-api-key' = $apiKey }
+  }
   $deadline = (Get-Date).AddSeconds($timeoutSeconds)
   while ((Get-Date) -lt $deadline) {
     try {
+      if ($headers) {
+        return Invoke-RestMethod -Uri ($baseUrl + '/api/ops/test/mode') -TimeoutSec 5 -Headers $headers
+      }
       return Invoke-RestMethod -Uri ($baseUrl + '/api/ops/test/mode') -TimeoutSec 5
     } catch {
       Start-Sleep -Seconds 1
     }
   }
   return $null
+}
+
+function Resolve-TestApiKey() {
+  $candidates = @(
+    $env:TEST_API_KEY_ADMIN,
+    $env:TEST_API_KEY_OPERATOR,
+    $env:API_KEY
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate) {
+      $value = $candidate.ToString().Trim()
+      if ($value) {
+        return $value
+      }
+    }
+  }
+  return ''
+}
+
+function Try-GetHttpStatus([string]$url) {
+  $apiKey = Resolve-TestApiKey
+  $headers = $null
+  if ($apiKey) {
+    $headers = @{ 'x-api-key' = $apiKey }
+  }
+  $supportsSkipHttpErrorCheck = $false
+  try {
+    $invokeWebRequest = Get-Command Invoke-WebRequest -ErrorAction Stop
+    $supportsSkipHttpErrorCheck = $invokeWebRequest.Parameters.ContainsKey('SkipHttpErrorCheck')
+  } catch {
+  }
+
+  if ($supportsSkipHttpErrorCheck) {
+    try {
+      if ($headers) {
+        $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 5 -SkipHttpErrorCheck -Headers $headers
+      } else {
+        $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 5 -SkipHttpErrorCheck
+      }
+      $status = $null
+      try { $status = [int]$response.StatusCode } catch {}
+      $body = $null
+      try { $body = $response.Content } catch {}
+      return @{
+        ok = ($status -ge 200 -and $status -lt 300)
+        status = $status
+        body = $body
+      }
+    } catch {
+    }
+  }
+
+  try {
+    if ($headers) {
+      $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 5 -Headers $headers -ErrorAction Stop
+    } else {
+      $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 5 -ErrorAction Stop
+    }
+    $status = $null
+    try { $status = [int]$response.StatusCode } catch {}
+    $body = $null
+    try { $body = $response.Content } catch {}
+    return @{
+      ok = $true
+      status = $status
+      body = $body
+    }
+  } catch {
+    $status = $null
+    $body = $null
+
+    try {
+      $resp = $_.Exception.Response
+      if ($resp) {
+        try { $status = [int]$resp.StatusCode } catch {}
+        try {
+          if ($resp.Content) {
+            $body = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+          }
+        } catch {}
+        if (-not $body) {
+          try {
+            $stream = $resp.GetResponseStream()
+            if ($stream) {
+              $reader = New-Object System.IO.StreamReader($stream)
+              $body = $reader.ReadToEnd()
+            }
+          } catch {}
+        }
+      }
+    } catch {
+    }
+
+    if (-not $body) {
+      try {
+        if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+          $body = $_.ErrorDetails.Message
+        }
+      } catch {
+      }
+    }
+
+    return @{
+      ok = $false
+      status = $status
+      body = $body
+    }
+  }
 }
 
 try {
@@ -142,9 +260,18 @@ try {
   $script:PortPrev = $env:PORT
   $script:HadCiRunId = $null -ne $env:CI_RUN_ID
   $script:CiRunIdPrev = $env:CI_RUN_ID
+  $script:HadSeedProfile = $null -ne $env:SEED_PROFILE
+  $script:SeedProfilePrev = $env:SEED_PROFILE
 
   $ciValue = if ($env:CI) { $env:CI.ToString().Trim().ToLower() } else { '' }
   $ciEnabled = ($ciValue -eq '1' -or $ciValue -eq 'true')
+  $isCiRun = ($ciEnabled -or [bool]$env:GITHUB_RUN_ID)
+  if ($isCiRun) {
+    $seedProfileCurrent = if ($env:SEED_PROFILE) { $env:SEED_PROFILE.ToString().Trim() } else { '' }
+    if (-not $seedProfileCurrent) {
+      $env:SEED_PROFILE = 'ci'
+    }
+  }
   $isLocalRun = (-not $ciEnabled -and -not $env:GITHUB_RUN_ID)
   if ($isLocalRun) {
     $ciRunIdCurrent = if ($env:CI_RUN_ID) { $env:CI_RUN_ID.ToString().Trim() } else { '' }
@@ -165,6 +292,31 @@ try {
   $env:USE_EMPLOYEE_ASSIGNMENTS = '1'
   $env:BASE_URL = $BaseUrl
   $env:PORT = $ServerPort
+
+  Write-Section 'Apply Seeds'
+  $seedProfile = if ($env:SEED_PROFILE) { $env:SEED_PROFILE.ToString().Trim() } else { '' }
+  if (-not $seedProfile) {
+    $seedProfile = 'dev'
+  }
+  $shouldApplySeeds = $true
+  if ($UseExistingServer -and -not $NoServer -and -not $isCiRun -and -not $script:HadSeedProfile) {
+    $shouldApplySeeds = $false
+    Write-Host 'WARN: Skipping DB seeds because -UseExistingServer was set and SEED_PROFILE was not explicitly provided.'
+    Write-Host 'WARN: This prevents seeding against an unknown server/database pairing.'
+    Write-Host 'Hint: Set SEED_PROFILE=dev|ci|prod explicitly to opt in seeding with -UseExistingServer.'
+    Write-Host "Hint: In PowerShell, set env var first, e.g. `$env:SEED_PROFILE='dev' ; pwsh -NoProfile -File .\tests\run-suite.ps1 -UseExistingServer"
+  }
+  if ($shouldApplySeeds) {
+    $applySeedsScript = Join-Path $repoRoot 'scripts\db\apply-seeds.ps1'
+    if (-not (Test-Path $applySeedsScript)) {
+      Fail-Step 'seeds' ("Seed script not found: {0}" -f $applySeedsScript)
+    }
+    Write-Host ("Applying DB seeds with profile '{0}'" -f $seedProfile)
+    & $applySeedsScript -Profile $seedProfile -RepoRoot $repoRoot
+    if ($LASTEXITCODE -ne 0) {
+      Fail-Step 'seeds' ('apply-seeds.ps1 failed with exit code ' + $LASTEXITCODE)
+    }
+  }
 
   $serverHost = $null
   try {
@@ -253,6 +405,22 @@ try {
       }
     } else {
       Write-ServerLogsTail $script:ServerStdoutLogPath $script:ServerStderrLogPath
+      $modeProbe = Try-GetHttpStatus ($BaseUrl + '/api/ops/test/mode')
+      $probeBodyText = if ($modeProbe.body) { $modeProbe.body.ToString().ToLower() } else { '' }
+      $resolvedModeApiKey = Resolve-TestApiKey
+      if ($modeProbe.status -eq 401 -or $modeProbe.status -eq 403) {
+        Write-Host "Hint: /api/ops/test/mode returned HTTP $($modeProbe.status). Auth may be enabled for this endpoint."
+        if ($resolvedModeApiKey) {
+          Write-Host "Hint: Key provided but still unauthorized/forbidden; verify key role/company scope."
+        } else {
+          Write-Host "Hint: Set TEST_API_KEY_ADMIN or TEST_API_KEY_OPERATOR (or API_KEY) for harness to access /api/ops/test/mode when REQUIRE_AUTH=1."
+        }
+        Write-Host "Hint: Start the test-safe server: .\scripts\run-test-server.ps1 (or disable REQUIRE_AUTH for test runs)."
+      } elseif ($modeProbe.status -eq 404 -or $probeBodyText.Contains('not_found') -or $probeBodyText.Contains('not found')) {
+        Write-Host "Hint: It looks like you are running a normal server (ALLOW_TEST_ENDPOINTS not enabled). Start the test-safe server: .\scripts\run-test-server.ps1"
+      } elseif ($null -eq $modeProbe.status) {
+        Write-Host "Hint: If you started the server manually with 'npm start', stop it and run: .\scripts\run-test-server.ps1"
+      }
       Fail-Step 'server_mode' 'Failed to fetch /api/ops/test/mode after retries. Is the test server running with ALLOW_TEST_ENDPOINTS=true?'
     }
   }
@@ -316,6 +484,11 @@ try {
     $env:CI_RUN_ID = $script:CiRunIdPrev
   } else {
     Remove-Item Env:CI_RUN_ID -ErrorAction SilentlyContinue
+  }
+  if ($script:HadSeedProfile) {
+    $env:SEED_PROFILE = $script:SeedProfilePrev
+  } else {
+    Remove-Item Env:SEED_PROFILE -ErrorAction SilentlyContinue
   }
   if ($script:StartedServer -and $script:ServerProcess) {
     try {

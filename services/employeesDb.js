@@ -1,4 +1,12 @@
-function buildListQuery({ companyId, personId, employeeCode, limit, offset }) {
+function buildListQuery({
+  companyId,
+  personId,
+  employeeCode,
+  productManagedOnly,
+  includeValidation,
+  limit,
+  offset
+}) {
   const whereParts = ['company_id = $1'];
   const params = [companyId];
 
@@ -10,6 +18,16 @@ function buildListQuery({ companyId, personId, employeeCode, limit, offset }) {
   if (employeeCode) {
     params.push(employeeCode);
     whereParts.push(`employee_code = $${params.length}`);
+  }
+  if (productManagedOnly) {
+    whereParts.push(`metadata->>'product_managed' = 'true'`);
+    if (!includeValidation) {
+      whereParts.push(`COALESCE(metadata->>'validation_user', 'false') <> 'true'`);
+      whereParts.push(`COALESCE(metadata->>'test_record', 'false') <> 'true'`);
+      whereParts.push(`COALESCE(metadata->>'not_for_client_reports', 'false') <> 'true'`);
+      whereParts.push(`person_id !~* '^emp_(empv1|empv1-other|filter-ui)-'`);
+      whereParts.push(`employee_code !~* '^(empv1|empv1-other|filter-ui)-'`);
+    }
   }
 
   params.push(limit);
@@ -28,8 +46,24 @@ function buildListQuery({ companyId, personId, employeeCode, limit, offset }) {
   return { query, params };
 }
 
-async function listEmployees(db, { companyId, personId, employeeCode, limit, offset }) {
-  const { query, params } = buildListQuery({ companyId, personId, employeeCode, limit, offset });
+async function listEmployees(db, {
+  companyId,
+  personId,
+  employeeCode,
+  productManagedOnly,
+  includeValidation,
+  limit,
+  offset
+}) {
+  const { query, params } = buildListQuery({
+    companyId,
+    personId,
+    employeeCode,
+    productManagedOnly,
+    includeValidation,
+    limit,
+    offset
+  });
   const res = await db.query(query, params);
   return res.rows;
 }

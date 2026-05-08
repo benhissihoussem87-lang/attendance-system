@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { adminHeaders, getCompanyId, operatorHeaders } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...operatorHeaders(), ...headers }
     };
 
     let payload = null;
@@ -58,7 +59,8 @@ function getBaseUrl() {
 async function fetchMode(baseUrl) {
   const res = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/ops/test/mode`
+    url: `${baseUrl}/api/ops/test/mode`,
+    headers: adminHeaders()
   });
   if (res.status === 404) {
     throw new Error('ALLOW_TEST_ENDPOINTS is not enabled; /api/ops/test/mode returned 404');
@@ -77,12 +79,13 @@ async function run() {
     throw new Error('ALLOW_TEST_ENDPOINTS must be enabled for contract tests');
   }
 
+  const companyId = getCompanyId();
   const runId = Math.random().toString(16).slice(2, 10);
   const deviceUid = `device_contract_${runId}`;
 
   const listRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/devices?company_id=DEFAULT&limit=2&offset=0`
+    url: `${baseUrl}/api/devices?company_id=${encodeURIComponent(companyId)}&limit=2&offset=0`
   });
   assert.strictEqual(listRes.status, 200, 'devices list should return 200');
   assert.ok(listRes.body && typeof listRes.body === 'object', 'devices list should return a body');
@@ -91,7 +94,7 @@ async function run() {
 
   const putRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/devices/${encodeURIComponent(deviceUid)}?company_id=DEFAULT`,
+    url: `${baseUrl}/api/devices/${encodeURIComponent(deviceUid)}?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       provider: 'zkteco',
@@ -103,11 +106,11 @@ async function run() {
   assert.strictEqual(putRes.status, 200, 'device PUT should return 200');
   assert.ok(putRes.body && typeof putRes.body === 'object', 'device PUT should return a body');
   assert.strictEqual(putRes.body.device_uid, deviceUid, 'device PUT should return matching device_uid');
-  assert.strictEqual(putRes.body.company_id, 'DEFAULT', 'device PUT should return company_id');
+  assert.strictEqual(putRes.body.company_id, companyId, 'device PUT should return company_id');
 
   const getRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/devices/${encodeURIComponent(deviceUid)}?company_id=DEFAULT`
+    url: `${baseUrl}/api/devices/${encodeURIComponent(deviceUid)}?company_id=${encodeURIComponent(companyId)}`
   });
   assert.strictEqual(getRes.status, 200, 'device GET should return 200');
   assert.ok(getRes.body && typeof getRes.body === 'object', 'device GET should return a body');

@@ -3,6 +3,10 @@
 Scope: code inspection only. No `.md` docs used as source of truth.  
 Evidence format: `file:line-range`.
 
+Phase 6 alignment note:
+- `db_schema.sql` is a local snapshot artifact and can drift.
+- Canonical schema truth is migration files under `migrations/` plus `tests/contracts/db.coreConstraints.contract.test.js`.
+
 ## A) Repository map (entrypoints, routes, services, engine, db, tests)
 
 - Primary server entrypoint is `server.js`, which constructs Express, mounts API routers, and starts listener via `start()` -> `app.listen(...)` (`server.js:L9-L12`, `server.js:L30-L49`, `server.js:L65-L75`).

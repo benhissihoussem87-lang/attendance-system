@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -88,7 +89,7 @@ if ($requireAuth) {
 }
 
 try {
-  $putOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
+  $putOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, [uri]::EscapeDataString($companyId)) `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -100,9 +101,9 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
+  $getOne = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, [uri]::EscapeDataString($companyId)) `
     -Headers $authHeaders
-  if ($getOne.company_id -ne 'DEFAULT') { throw 'expected company_id DEFAULT' }
+  if ($getOne.company_id -ne $companyId) { throw "expected company_id $companyId" }
   if (-not $getOne.person_id -or [string]::IsNullOrWhiteSpace($getOne.person_id)) {
     throw ("expected person_id to be present. response={0}" -f ($getOne | ConvertTo-Json -Depth 6))
   }
@@ -110,7 +111,7 @@ try {
   if ($getOne.full_name -ne 'Ali Ben Salah') { throw 'expected full_name Ali Ben Salah' }
   if ($getOne.metadata.dept -ne 'IT') { throw 'expected metadata.dept IT' }
 
-  $personUrl = ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId, 'DEFAULT')
+  $personUrl = ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonId, [uri]::EscapeDataString($companyId))
   $expectedSegment = "/${encodedPersonId}?company_id="
   if ($personUrl -notlike "*$expectedSegment*") {
     throw ("expected person URL to include {0}. personId={1} encodedPersonId={2} personUrl={3}" -f $expectedSegment, $personIdP1, $encodedPersonIdP1, $personUrl)
@@ -130,7 +131,7 @@ try {
     -Headers $authHeaders
   if ($getRun.person_id -ne $personId) { throw 'expected GET person_id to match path param' }
 
-  $identityUpsert = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+  $identityUpsert = Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=$([uri]::EscapeDataString($companyId))" `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -144,7 +145,7 @@ try {
     } | ConvertTo-Json -Depth 6)
   if ($identityUpsert.person_id -ne $personId) { throw 'expected identity mapping upsert to succeed for person_id' }
 
-  $putTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
+  $putTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, [uri]::EscapeDataString($companyId)) `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -155,12 +156,12 @@ try {
       }
     } | ConvertTo-Json -Depth 6)
 
-  $getTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, 'DEFAULT') `
+  $getTwo = Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP1, [uri]::EscapeDataString($companyId)) `
     -Headers $authHeaders
   if ($getTwo.full_name -ne 'Ali Ben Salah Updated') { throw 'expected updated full_name' }
 
   try {
-    Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP2, 'DEFAULT') `
+    Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, $encodedPersonIdP2, [uri]::EscapeDataString($companyId)) `
       -Method Put `
       -Headers $authHeaders `
       -ContentType 'application/json' `
@@ -191,7 +192,7 @@ try {
   }
 
   try {
-    Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, 'p3', 'DEFAULT') `
+    Invoke-RestMethod ("{0}/api/employees-registry/{1}?company_id={2}" -f $baseUrl, 'p3', [uri]::EscapeDataString($companyId)) `
       -Method Put `
       -Headers $authHeaders `
       -ContentType 'application/json' `

@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $person = "ps_" + [guid]::NewGuid().ToString("N")
 $csv = @"
 person_id,event_time,direction
@@ -38,7 +40,7 @@ if ($requireAuth) {
 }
 
 try {
-  $first = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
+  $first = Invoke-RestMethod "${baseUrl}/api/device-events/import/commit?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $operatorHeaders `
     -ContentType 'text/plain' `
@@ -48,7 +50,7 @@ try {
     exit 1
   }
 
-  $second = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
+  $second = Invoke-RestMethod "${baseUrl}/api/device-events/import/commit?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $operatorHeaders `
     -ContentType 'text/plain' `

@@ -15,6 +15,53 @@ Required environment variables
 
 Local workflows
 
+Bridge operations runbook
+- `docs/BRIDGE_OPERATIONS_RUNBOOK.md`
+
+Active roadmap: Device Lifecycle Coherence V2
+- Problem: K80 real-device probe/runtime protocol path is proven, but that probe success is not yet equivalent to canonical managed operational onboarding in SaaS `/boss` lifecycle surfaces.
+- Operational rule: probe success != managed lifecycle completion. Canonical onboarding requires coherent discovery/candidate/claim/managed/linkage/sync/batch visibility.
+- Phases:
+  - Phase 0: runtime evidence gathering + exact lifecycle break-point confirmation.
+  - Phase 1: lifecycle/identity/binding/visibility contract codification.
+  - Phase 2: minimal persistence/linkage foundation.
+  - Phase 3: `/boss` operational coherence.
+  - Phase 4: hardening/tests/contracts.
+  - Phase 5: long-term cleanup + migration guardrails.
+- Current execution focus for this track: Phase 5 long-term cleanup + migration guardrails.
+
+Active architecture direction (next): Manual Device Onboarding + Agent Validation (Site Agent Model)
+- SaaS operations UI direction: evolve `/boss` into the real product operations surface (not a throwaway console).
+- Control-plane rule: SaaS UI is primary; any future Local Agent UI is secondary local diagnostics/support only.
+- Discovery remains useful helper evidence, but not reliable primary onboarding truth for all real devices/firmware paths.
+- One Local Agent per site/network remains the primary model.
+- One site agent may manage multiple biometric devices in the same LAN/site.
+- Manual per-device onboarding is first-class and must capture explicit connection metadata (provider/vendor, host/IP, port, auth/communication key, machine/device number, transport, protocol/profile/attlog sequence, optional model/firmware/label/notes).
+- Device readiness/actionability must be proven by successful agent-side validation per device.
+- Local Agent runtime defaults:
+  - Windows/Windows Server: Windows Service
+  - Linux: systemd service
+  - Docker: optional/advanced only (not default)
+- Planned phases:
+  - Phase A: onboarding contract + per-device field model
+  - Phase B: agent-side per-device validation flow
+  - Phase C: operator onboarding/validation UX
+  - Phase D: local agent operating-model hardening
+  - Phase E: multi-device per-site operationalization
+
+Active architecture direction (next): Control Plane & Site Runtime Architecture
+- SaaS remains the primary and authoritative control plane for inventory, desired configuration, bindings, command ledger, lifecycle audit/history, and version policy.
+- Local Agent remains the site runtime/execution plane (reports local/runtime truth and executes LAN operations) and is not the authoritative source of control-plane intent.
+- Site is being formalized as a first-class operating entity with one active agent via explicit lease/ownership semantics; one site agent may manage multiple devices.
+- Planned phases:
+  - Architecture Phase 1: Site as first-class SaaS entity
+  - Architecture Phase 2: Site Agent Lease / active runtime ownership
+  - Architecture Phase 3: desired-state vs reported-state model
+  - Architecture Phase 4: durable agent identity hardening
+  - Architecture Phase 5: offline buffer / command truth hardening
+  - Architecture Phase 6: version governance / rollout compatibility
+- Current execution focus for this track: Architecture Phase 6 foundational governance truth (reported runtime version + minimum/target compatibility policy), without rollout/package automation yet.
+
 Quickstart (development)
 - Install dependencies:
   - `npm install`
@@ -57,7 +104,8 @@ PowerShell start
 
 DB schema dump (PowerShell)
 - `.\scripts\db\dump-schema.ps1`
-- `db_schema.sql` is generated and not committed.
+- `db_schema.sql` is a local snapshot helper (git-ignored).
+- Canonical schema truth is migration files under `migrations/` plus `tests/contracts/db.coreConstraints.contract.test.js`.
 
 Quick smoke tests (PowerShell)
 - `Invoke-RestMethod http://localhost:3000/api/ops/health`
@@ -84,8 +132,10 @@ OpenAPI maintenance
 - Build the endpoint inventory and report after route changes:
   - `node .\scripts\build-endpoint-inventory.js`
 - Outputs:
-  - `docs/openapi/endpoint-inventory.json` (current count: 39 endpoints)
+  - `docs/openapi/endpoint-inventory.json` (generated local/CI artifact, git-ignored)
   - `docs/openapi/endpoint-inventory-report.md`
+- Freshness check (fails if report is stale):
+  - `node .\tests\contracts\openapi.inventoryFreshness.test.js`
 - Expectation: `openapi/openapi.yaml` has a path + operationId for each implemented route.
 - More details: `docs/openapi/WORKFLOW.md`
 
@@ -99,12 +149,9 @@ Feature flags (keep off in production by default)
 - USE_DERIVED_WORK_DATE
 - ENABLE_CSV_TIME_INTERPRETATION
 
-Required DB tables
-- device_events
-- attendance_days
-
-Dedup constraint
-- device_events must have unique constraint named `device_events_dedup_company_uk`
+Device event dedup surfaces
+- `device_events_dedup_company_uk` unique constraint must exist.
+- `device_events_dedup_key_company_uk` partial unique index (`dedup_key IS NOT NULL`) must exist.
 
 Device UID hardening migration
 - Apply: `psql -d <db> -f migrations/20260114_device_uid_hardening.sql`

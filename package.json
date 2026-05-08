@@ -1,10 +1,15 @@
 {
   "name": "attendance-system",
-  "version": "1.0.0",
+  "version": "1.4.0",
   "description": "Vendor-agnostic attendance system",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "agent:start": "node agent/index.js",
+    "agent:start:local": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ops/start-agent-local.ps1",
+    "ops:check-agent": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/ops/check-agent-baseline.ps1",
+    "agent:probe": "node scripts/agent/discovery-probe.js",
+    "agent:pull-probe": "node scripts/agent/pull-events-probe.js"
   },
   "keywords": [],
   "author": "",

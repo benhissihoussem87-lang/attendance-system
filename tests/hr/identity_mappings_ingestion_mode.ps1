@@ -8,6 +8,7 @@ $nonce = ([guid]::NewGuid().ToString('N')).Substring(0, 6)
 $runSuffix = "${safeRunId}_${nonce}_hringest"
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 
 function To-Bool {
   param($value)
@@ -227,7 +228,6 @@ function Dump-PreviewDiagnostics {
 }
 
 try {
-  $companyId = 'DEFAULT'
   $personVendor = "ingest_vendor_$runSuffix"
   $personGeneric = "ingest_generic_$runSuffix"
   $vendorProvider = 'zkteco'

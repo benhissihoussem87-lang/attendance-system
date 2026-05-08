@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { getCompanyId, operatorHeaders } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...operatorHeaders(), ...headers }
     };
 
     let payload = null;
@@ -68,11 +69,12 @@ function assertErrorEnvelope(body) {
 
 async function run() {
   const baseUrl = getBaseUrl();
+  const companyId = getCompanyId();
 
   const unknownPerson = `missing-${Math.random().toString(16).slice(2, 10)}`;
   const missingRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(unknownPerson)}?company_id=DEFAULT`
+    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(unknownPerson)}?company_id=${encodeURIComponent(companyId)}`
   });
 
   assert.strictEqual(missingRes.status, 404, 'unknown employee should return 404');
@@ -85,7 +87,7 @@ async function run() {
 
   const invalidMetadata = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/employees-registry/test-error?company_id=DEFAULT`,
+    url: `${baseUrl}/api/employees-registry/test-error?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       metadata: 'not-an-object'

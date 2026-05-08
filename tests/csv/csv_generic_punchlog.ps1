@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -96,7 +98,7 @@ try {
   }
 
   if ($mode -and $mode.require_identity_mappings -eq $true) {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
+    Invoke-RestMethod "${baseUrl}/api/employees-registry/${encodedPersonId}?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
@@ -104,7 +106,7 @@ try {
         metadata = @{}
       } | ConvertTo-Json -Depth 6) | Out-Null
 
-    Invoke-RestMethod "$baseUrl/api/identity-mappings?company_id=DEFAULT" `
+    Invoke-RestMethod "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
@@ -120,7 +122,7 @@ try {
 
   $previewHeaders = @{} + $operatorHeaders
   $previewHeaders['x-vendor'] = 'generic_punchlog'
-  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
+  $res = Invoke-RestMethod "${baseUrl}/api/device-events/import/preview?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $previewHeaders `
     -ContentType 'text/plain' `
@@ -139,7 +141,7 @@ p_missing,2026-01-07 09:00:00,IN,SN-XYZ
 "@
     $missingHeaders = @{} + $operatorHeaders
     $missingHeaders['x-vendor'] = 'generic_punchlog'
-    $missing = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
+    $missing = Invoke-RestMethod "${baseUrl}/api/device-events/import/preview?company_id=${encodedCompanyId}" `
       -Method Post `
       -Headers $missingHeaders `
       -ContentType 'text/plain' `

@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -144,12 +146,12 @@ try {
   $encodedPersonId = [uri]::EscapeDataString($personId)
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId" `
+    Invoke-RestMethod "${baseUrl}/api/employees-registry/${encodedPersonId}?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
-        company_id = 'DEFAULT'
+        company_id = $companyId
         employee_code = "DEDUP_P1_$runSuffix"
         full_name = 'Dedup P1'
         active = $true
@@ -160,12 +162,12 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings" `
+    Invoke-RestMethod "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
       -Body (@{
-        company_id = 'DEFAULT'
+        company_id = $companyId
         provider = 'generic'
         identifier_type = 'person_id'
         identifier_value = $identifierValue
@@ -178,7 +180,7 @@ try {
   }
 
   $event = @{
-    company_id = 'DEFAULT'
+    company_id = $companyId
     person_id = 'UNTRUSTED_INPUT'
     event_time_utc = '2026-01-27T12:00:00Z'
     direction = 'IN'

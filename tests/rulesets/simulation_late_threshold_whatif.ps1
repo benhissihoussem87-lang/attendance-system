@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $date = '2026-01-16'
 $personId = if ($env:ATTENDANCE_PERSON_ID) { $env:ATTENDANCE_PERSON_ID } else { 'p1' }
 
@@ -101,7 +103,7 @@ try {
     -Headers $opsHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       company_timezone = 'Africa/Tunis'
       night_shift_enabled = $true
       day_start_time = '04:00'
@@ -167,7 +169,7 @@ try {
     -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       person_id = $personId
       start_date = $date
       end_date = $date
@@ -189,7 +191,7 @@ try {
     -Headers $operatorHeaders `
     -ContentType 'application/json' `
     -Body (@{
-      company_id = 'DEFAULT'
+      company_id = $companyId
       person_id = $personId
       start_date = $date
       end_date = $date

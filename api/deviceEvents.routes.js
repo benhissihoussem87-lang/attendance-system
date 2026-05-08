@@ -24,6 +24,7 @@ const {
   CSV_IMPORT_VERSION,
   CSV_CONTRACT
 } = require('../contracts/systemContracts');
+const { buildDedupKey } = require('../contracts/agentDeviceEventsContract');
 const { upsertDeviceMinimal } = require('../services/devicesDb');
 const {
   getIdentityContext: getAdapterIdentityContext,
@@ -176,7 +177,9 @@ router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), as
       raw_payload = null,
       provider,
       identifier_type,
-      identifier_value
+      identifier_value,
+      verify_state = null,
+      verify_method = null
     } = req.body;
     let parsedPayload = raw_payload;
 
@@ -244,6 +247,8 @@ router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), as
 
     const companyId = resolveCompanyId(req, req.body || {}) || 'DEFAULT';
     let resolvedPersonId = person_id;
+    let mappingApplied = false;
+    let mappingReason = null;
 
     const useIdentityMappings = toBool(process.env.USE_IDENTITY_MAPPINGS);
     const providerRaw = (typeof provider === 'string' && provider.trim())
@@ -280,6 +285,8 @@ router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), as
         });
       }
       resolvedPersonId = resolution.person_id || resolvedPersonId;
+      mappingApplied = resolution.applied === true;
+      mappingReason = resolution.reason || null;
       if (hasIdentityInputs) {
         parsedPayload = buildIdentityPayload(parsedPayload, {
           provider: providerValue,
@@ -308,22 +315,55 @@ router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), as
       }
     }
 
+    const parsedEventTime = new Date(event_time_utc);
+    const canonicalEventTimeUtc = Number.isNaN(parsedEventTime.getTime())
+      ? event_time_utc
+      : parsedEventTime.toISOString();
+    const stableDevicePersonId = identifierValueValue || resolvedPersonId;
+    const dedupVendor = providerValue
+      || (typeof vendor === 'string' && vendor.trim() ? vendor.trim().toLowerCase() : 'generic');
+    const dedupKey = buildDedupKey({
+      vendor: dedupVendor,
+      deviceUid: sanitizedDeviceUid,
+      devicePersonId: stableDevicePersonId,
+      eventTimeUtc: canonicalEventTimeUtc,
+      direction,
+      verifyState: verify_state || '',
+      verifyMethod: verify_method || ''
+    });
+    const sourceMetadata = {
+      ingest_method: 'api_json',
+      mapped_person_id: resolvedPersonId,
+      mapping_applied: mappingApplied,
+      mapping_reason: mappingReason || (mappingApplied ? 'mapped' : (useIdentityMappings ? 'missing' : 'disabled')),
+      identity_provider: hasIdentityInputs ? providerValue : null,
+      identity_type: hasIdentityInputs ? identifierTypeValue : null,
+      identity_value: hasIdentityInputs ? identifierValueValue : null
+    };
+
     const insertResult = await db.query(
       `
       INSERT INTO device_events
-        (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
-      ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
+        (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload,
+         ingest_method, dedup_key, device_person_id, verify_state, verify_method, source_metadata)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13::jsonb)
+      ON CONFLICT DO NOTHING
       RETURNING person_id, event_time_utc, direction, device_uid, vendor
       `,
       [
         companyId,
         resolvedPersonId,
-        event_time_utc,
+        canonicalEventTimeUtc,
         direction,
         vendor,
         sanitizedDeviceUid,
-        parsedPayload
+        parsedPayload,
+        'api_json',
+        dedupKey,
+        stableDevicePersonId,
+        verify_state,
+        verify_method,
+        JSON.stringify(sourceMetadata)
       ]
     );
 
@@ -331,7 +371,7 @@ router.post('/', requireApiKey, enforceCompanyScope, requireRole('operator'), as
       return res.status(200).json({ status: 'ok', dedup: true });
     }
 
-    await invalidateAttendanceCache(db, resolvedPersonId, event_time_utc, { companyId });
+    await invalidateAttendanceCache(db, resolvedPersonId, canonicalEventTimeUtc, { companyId });
 
     res.status(201).json({ status: 'ok' });
   } catch (err) {

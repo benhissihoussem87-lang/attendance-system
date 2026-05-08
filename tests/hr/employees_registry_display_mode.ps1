@@ -6,6 +6,7 @@ if ($env:USE_EMPLOYEES_REGISTRY -ne '1') {
 }
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -40,7 +41,7 @@ if ($requireAuth) {
 }
 
 try {
-  Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=DEFAULT" `
+  Invoke-RestMethod "$baseUrl/api/employees-registry/${encodedPersonId}?company_id=$([uri]::EscapeDataString($companyId))" `
     -Method Put `
     -Headers $authHeaders `
     -ContentType 'application/json' `
@@ -52,7 +53,7 @@ try {
       }
     } | ConvertTo-Json -Depth 6) | Out-Null
 
-  $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=DEFAULT" `
+  $res = Invoke-RestMethod "$baseUrl/api/attendance?date=$date&person_id=$personId&company_id=$([uri]::EscapeDataString($companyId))" `
     -Headers $authHeaders
   $record = if ($res -and $res.PSObject -and $res.PSObject.Properties.Name -contains 'value') { $res.value[0] } else { $res[0] }
 

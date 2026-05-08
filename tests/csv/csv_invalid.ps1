@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $csv = @"
 person_id,event_time,direction
 ,2026-01-07 08:00:00,IN
@@ -36,7 +38,7 @@ if ($requireAuth) {
 }
 
 try {
-  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/preview?company_id=DEFAULT" `
+  $res = Invoke-RestMethod "${baseUrl}/api/device-events/import/preview?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $operatorHeaders `
     -ContentType 'text/plain' `

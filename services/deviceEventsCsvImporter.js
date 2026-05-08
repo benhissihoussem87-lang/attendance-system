@@ -9,6 +9,7 @@ const {
   interpretEventTime,
   isTimeInterpretationEnabled
 } = require('./timeInterpreter');
+const { buildDedupKey } = require('../contracts/agentDeviceEventsContract');
 const { upsertDeviceMinimal } = require('./devicesDb');
 
 function buildIdentityPayload(rawPayload, identityMeta) {
@@ -36,6 +37,11 @@ function pushInsertedSample(first3Inserted, last3Inserted, sampleItem) {
   if (last3Inserted.length > 3) {
     last3Inserted.shift();
   }
+}
+
+function normalizeIsoOrRaw(value) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
 }
 
 async function importDeviceEventsCsv(db, csvText, companyId, options = {}) {
@@ -163,11 +169,33 @@ async function importDeviceEventsCsv(db, csvText, companyId, options = {}) {
       const values = [
         effectiveCompanyId,
         normalized.person_id,
-        normalized.event_time_utc,
+        normalizeIsoOrRaw(normalized.event_time_utc),
         normalized.direction,
         normalized.vendor,
         normalized.device_uid,
-        normalized.raw_payload
+        normalized.raw_payload,
+        'csv_import',
+        buildDedupKey({
+          vendor: (identity && identity.provider) || autoVendor || normalized.vendor || 'generic',
+          deviceUid: normalized.device_uid,
+          devicePersonId: (identity && identity.identifierValue) || normalized.person_id,
+          eventTimeUtc: normalizeIsoOrRaw(normalized.event_time_utc),
+          direction: normalized.direction,
+          verifyState: '',
+          verifyMethod: ''
+        }),
+        (identity && identity.identifierValue) || normalized.person_id,
+        JSON.stringify({
+          ingest_method: 'csv_import',
+          mapped_person_id: normalized.person_id,
+          mapping_applied: Boolean(identity && identity.mappingApplied),
+          mapping_reason: identity
+            ? (identity.mappingApplied ? 'mapped' : 'missing')
+            : 'missing',
+          identity_provider: (identity && identity.provider) || autoVendor || null,
+          identity_type: (identity && identity.identifierType) || null,
+          identity_value: (identity && identity.identifierValue) || null
+        })
       ];
 
       let result;
@@ -175,9 +203,10 @@ async function importDeviceEventsCsv(db, csvText, companyId, options = {}) {
         result = await db.query(
           `
           INSERT INTO device_events
-            (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
-          ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
+            (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload,
+             ingest_method, dedup_key, device_person_id, source_metadata)
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb)
+          ON CONFLICT DO NOTHING
           RETURNING person_id, event_time_utc, direction, device_uid, vendor
           `,
           values
@@ -362,11 +391,33 @@ async function importDeviceEventsCsv(db, csvText, companyId, options = {}) {
     const values = [
       effectiveCompanyId,
       canonical.person_id,
-      canonical.event_time_utc,
+      normalizeIsoOrRaw(canonical.event_time_utc),
       canonical.direction,
       canonical.vendor,
       canonical.device_uid,
-      canonical.raw_payload
+      canonical.raw_payload,
+      'csv_import',
+      buildDedupKey({
+        vendor: (identity && identity.provider) || autoVendor || canonical.vendor || 'generic',
+        deviceUid: canonical.device_uid,
+        devicePersonId: (identity && identity.identifierValue) || canonical.person_id,
+        eventTimeUtc: normalizeIsoOrRaw(canonical.event_time_utc),
+        direction: canonical.direction,
+        verifyState: '',
+        verifyMethod: ''
+      }),
+      (identity && identity.identifierValue) || canonical.person_id,
+      JSON.stringify({
+        ingest_method: 'csv_import',
+        mapped_person_id: canonical.person_id,
+        mapping_applied: Boolean(identity && identity.mappingApplied),
+        mapping_reason: identity
+          ? (identity.mappingApplied ? 'mapped' : 'missing')
+          : 'missing',
+        identity_provider: (identity && identity.provider) || autoVendor || null,
+        identity_type: (identity && identity.identifierType) || null,
+        identity_value: (identity && identity.identifierValue) || null
+      })
     ];
 
     let result;
@@ -374,9 +425,10 @@ async function importDeviceEventsCsv(db, csvText, companyId, options = {}) {
       result = await db.query(
         `
         INSERT INTO device_events
-          (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
-        ON CONFLICT ON CONSTRAINT device_events_dedup_company_uk DO NOTHING
+          (company_id, person_id, event_time_utc, direction, vendor, device_uid, raw_payload,
+           ingest_method, dedup_key, device_person_id, source_metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11::jsonb)
+        ON CONFLICT DO NOTHING
         RETURNING person_id, event_time_utc, direction, device_uid, vendor
         `,
         values

@@ -7,7 +7,9 @@ const {
   getDevice,
   upsertDevice
 } = require('../services/devicesDb');
+const { attachManageabilityView } = require('../services/deviceManageability');
 const { sendError } = require('./lib/errorEnvelope');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
 
 function resolveCompanyId(req, body) {
   const bodyId = body && typeof body.company_id === 'string' ? body.company_id : null;
@@ -16,6 +18,10 @@ function resolveCompanyId(req, body) {
 
   if (bodyId && ((queryId && bodyId !== queryId) || (headerId && bodyId !== headerId))) {
     return { error: 'company_id mismatch' };
+  }
+
+  if (req.ctx && req.ctx.company_id) {
+    return { value: req.ctx.company_id };
   }
 
   return { value: queryId || headerId || 'DEFAULT' };
@@ -37,7 +43,22 @@ function parseOffset(value) {
   return parsed;
 }
 
-router.get('/', async (req, res) => {
+function parseBooleanFlag(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+function isUuid(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+router.get('/', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
@@ -60,16 +81,50 @@ router.get('/', async (req, res) => {
     const deviceUid = typeof req.query.device_uid === 'string' && req.query.device_uid.length > 0
       ? req.query.device_uid.trim()
       : null;
+    const siteId = typeof req.query.site_id === 'string' && req.query.site_id.length > 0
+      ? req.query.site_id.trim()
+      : null;
+    if (siteId && !isUuid(siteId)) {
+      return sendError(res, {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: {
+          kind: 'validation',
+          error: 'invalid_request',
+          detail: 'site_id must be a valid UUID'
+        }
+      });
+    }
+    const managedStatus = typeof req.query.managed_status === 'string' && req.query.managed_status.length > 0
+      ? req.query.managed_status.trim()
+      : null;
+    const manageabilityStatus = typeof req.query.manageability_status === 'string' && req.query.manageability_status.length > 0
+      ? req.query.manageability_status.trim()
+      : null;
+    const remediationManualStatus = typeof req.query.remediation_manual_status === 'string' && req.query.remediation_manual_status.length > 0
+      ? req.query.remediation_manual_status.trim()
+      : null;
+    const lifecycleScope = typeof req.query.lifecycle_scope === 'string' && req.query.lifecycle_scope.length > 0
+      ? req.query.lifecycle_scope.trim()
+      : null;
 
     const rows = await listDevices(db, {
       companyId,
       provider,
       deviceUid,
+      siteId,
+      managedStatus,
+      manageabilityStatus,
+      remediationManualStatus,
+      lifecycleScope,
+      productSurface: parseBooleanFlag(req.query.product_surface),
       limit: parseLimit(req.query.limit),
       offset: parseOffset(req.query.offset)
     });
 
-    return res.json({ value: rows, Count: rows.length });
+    const value = rows.map(attachManageabilityView);
+    return res.json({ value, Count: value.length });
   } catch (err) {
     console.error(err);
     return sendError(res, {
@@ -80,7 +135,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/:deviceUid', async (req, res) => {
+router.get('/:deviceUid', requireApiKey, enforceCompanyScope, requireRole('viewer'), async (req, res) => {
   try {
     const resolved = resolveCompanyId(req, null);
     if (resolved.error) {
@@ -111,7 +166,7 @@ router.get('/:deviceUid', async (req, res) => {
       });
     }
 
-    return res.json(device);
+    return res.json(attachManageabilityView(device));
   } catch (err) {
     console.error(err);
     return sendError(res, {
@@ -122,7 +177,7 @@ router.get('/:deviceUid', async (req, res) => {
   }
 });
 
-router.put('/:deviceUid', async (req, res) => {
+router.put('/:deviceUid', requireApiKey, enforceCompanyScope, requireRole('admin'), async (req, res) => {
   try {
     const body = req.body || {};
     const resolved = resolveCompanyId(req, body);
@@ -160,7 +215,7 @@ router.put('/:deviceUid', async (req, res) => {
     }
 
     const saved = await upsertDevice(db, companyId, deviceUid, body);
-    return res.json(saved);
+    return res.json(attachManageabilityView(saved));
   } catch (err) {
     if (err && err.code === 'invalid_request') {
       return sendError(res, {
@@ -184,3 +239,4 @@ router.put('/:deviceUid', async (req, res) => {
 });
 
 module.exports = router;
+

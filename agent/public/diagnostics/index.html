@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Agent Diagnostics</title>
+  <link rel="stylesheet" href="/diagnostics/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow">Local Support Surface</p>
+      <h1>Local Agent Diagnostics</h1>
+      <p class="subtext">Secondary support panel. SaaS <code>/boss</code> remains the primary control plane.</p>
+    </div>
+    <div class="header-actions">
+      <button id="refreshBtn" type="button">Refresh</button>
+      <span id="lastRefreshLabel">Waiting for first snapshot...</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel summary" aria-labelledby="summaryTitle">
+      <h2 id="summaryTitle">Runtime Summary</h2>
+      <div class="summary-grid">
+        <article class="summary-item">
+          <h3>Agent Runtime</h3>
+          <p id="summaryRuntime" class="status-pill">Unknown</p>
+        </article>
+        <article class="summary-item">
+          <h3>SaaS Connectivity</h3>
+          <p id="summarySaas" class="status-pill">Unknown</p>
+        </article>
+        <article class="summary-item">
+          <h3>Command Polling</h3>
+          <p id="summaryPolling" class="status-pill">Unknown</p>
+        </article>
+        <article class="summary-item">
+          <h3>Buffered Event Batches</h3>
+          <p id="summaryBuffered" class="metric">0</p>
+        </article>
+      </div>
+      <div class="summary-note">
+        <p id="summaryMessage">No diagnostics data yet.</p>
+        <ul id="summaryHints"></ul>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="historyTitle">
+      <h2 id="historyTitle">Health &amp; Recent History</h2>
+      <div class="history-grid">
+        <article class="summary-item">
+          <h3>Health Level</h3>
+          <p id="historyHealth" class="status-pill">Unknown</p>
+          <p id="historyHealthReason" class="summary-help-text">Waiting for diagnostics evidence.</p>
+        </article>
+        <article class="summary-item">
+          <h3>Latest Success</h3>
+          <p id="historyLastSuccess" class="metric">Not yet</p>
+          <p id="historyLastSuccessDetail" class="summary-help-text">No successful command recorded yet.</p>
+        </article>
+        <article class="summary-item">
+          <h3>Latest Failure</h3>
+          <p id="historyLastFailure" class="metric">None</p>
+          <p id="historyLastFailureDetail" class="summary-help-text">No failure recorded yet.</p>
+        </article>
+        <article class="summary-item">
+          <h3>Failure Pattern</h3>
+          <p id="historyFailurePattern" class="status-pill">Unknown</p>
+          <p id="historyFailurePatternDetail" class="summary-help-text">Insufficient history yet.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="agentStatusTitle">
+      <h2 id="agentStatusTitle">Agent Status</h2>
+      <dl class="meta-grid" id="agentMeta"></dl>
+    </section>
+
+    <section class="panel" aria-labelledby="commandsTitle">
+      <h2 id="commandsTitle">Recent Activity</h2>
+      <div class="activity-meta" id="commandsMeta"></div>
+      <table class="table" id="activityTable">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Type</th>
+            <th>Message</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="activityEmpty" class="empty" hidden>No local activity recorded yet.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="devicesTitle">
+      <h2 id="devicesTitle">Devices (Local Runtime View)</h2>
+      <table class="table" id="devicesTable">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Connection Profile</th>
+            <th>Last Validation</th>
+            <th>Last Pull</th>
+            <th>Last Seen Locally</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="devicesEmpty" class="empty" hidden>No device commands have been observed by this agent yet.</p>
+    </section>
+  </main>
+
+  <script src="/diagnostics/app.js"></script>
+</body>
+</html>

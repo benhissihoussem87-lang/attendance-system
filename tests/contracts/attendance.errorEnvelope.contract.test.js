@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { operatorHeaders } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...operatorHeaders(), ...headers }
     };
 
     let payload = null;

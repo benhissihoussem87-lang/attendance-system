@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { adminHeaders, getCompanyId, operatorHeaders, toBool } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...operatorHeaders(), ...headers }
     };
 
     let payload = null;
@@ -69,7 +70,8 @@ function assertErrorEnvelope(body) {
 async function fetchMode(baseUrl) {
   const res = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/ops/test/mode`
+    url: `${baseUrl}/api/ops/test/mode`,
+    headers: adminHeaders()
   });
   if (res.status === 404) {
     throw new Error('ALLOW_TEST_ENDPOINTS is not enabled; /api/ops/test/mode returned 404');
@@ -88,12 +90,14 @@ async function run() {
     throw new Error('ALLOW_TEST_ENDPOINTS must be enabled for contract tests');
   }
 
+  const companyId = getCompanyId();
+  const requireAuth = toBool(process.env.REQUIRE_AUTH);
   const runId = Math.random().toString(16).slice(2, 10);
 
   // Test 1: PUT / with company_id mismatch (body vs query)
   const putMismatchRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: {
       'content-type': 'application/json'
     },
@@ -105,14 +109,39 @@ async function run() {
       person_id: `person_mismatch_${runId}`
     }
   });
-  assert.strictEqual(putMismatchRes.status, 400, 'PUT / with company_id mismatch should return 400');
+  assert.strictEqual(
+    putMismatchRes.status,
+    requireAuth ? 403 : 400,
+    `PUT / with company_id mismatch should return ${requireAuth ? 403 : 400}`
+  );
   assertErrorEnvelope(putMismatchRes.body);
-  assert.strictEqual(putMismatchRes.body.code, 'VALIDATION_ERROR', 'PUT company_id mismatch should have code VALIDATION_ERROR');
+  if (requireAuth) {
+    assert.strictEqual(putMismatchRes.body.code, 'FORBIDDEN', 'PUT company_id mismatch should have code FORBIDDEN');
+    assert.ok(
+      putMismatchRes.body.details && putMismatchRes.body.details.kind === 'authz',
+      'PUT company_id mismatch details.kind should be authz'
+    );
+    assert.strictEqual(
+      putMismatchRes.body.details.error,
+      'company_mismatch',
+      'PUT company_id mismatch details.error should be company_mismatch'
+    );
+  } else {
+    assert.strictEqual(
+      putMismatchRes.body.code,
+      'VALIDATION_ERROR',
+      'PUT company_id mismatch should have code VALIDATION_ERROR'
+    );
+    assert.ok(
+      putMismatchRes.body.details && putMismatchRes.body.details.kind === 'validation',
+      'PUT company_id mismatch details.kind should be validation'
+    );
+  }
 
   // Test 2: PUT / with invalid metadata (not an object)
   const putInvalidMetadataRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       provider: 'test',
@@ -129,7 +158,7 @@ async function run() {
   // Test 3: PUT / with invalid active (not a boolean)
   const putInvalidActiveRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       provider: 'test',
@@ -146,7 +175,7 @@ async function run() {
   // Test 4: PUT / with non-existent employee
   const putMissingEmployeeRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       provider: 'test',
@@ -167,7 +196,7 @@ async function run() {
   // Create first employee
   const emp1Res = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(employee1Id)}?company_id=DEFAULT`,
+    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(employee1Id)}?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       full_name: 'Employee 1',
@@ -180,7 +209,7 @@ async function run() {
   // Create second employee
   const emp2Res = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(employee2Id)}?company_id=DEFAULT`,
+    url: `${baseUrl}/api/employees-registry/${encodeURIComponent(employee2Id)}?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       full_name: 'Employee 2',
@@ -193,7 +222,7 @@ async function run() {
   // Map identifier to employee 1
   const mapping1Res = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       provider: 'test',
@@ -208,7 +237,7 @@ async function run() {
   // Try to map same identifier to employee 2 - should fail with CONFLICT
   const conflictRes = await requestJson({
     method: 'PUT',
-    url: `${baseUrl}/api/identity-mappings?company_id=DEFAULT`,
+    url: `${baseUrl}/api/identity-mappings?company_id=${encodeURIComponent(companyId)}`,
     headers: { 'content-type': 'application/json' },
     body: {
       provider: 'test',

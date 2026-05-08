@@ -1,6 +1,7 @@
 const assert = require('assert');
 const http = require('http');
 const https = require('https');
+const { getCompanyId, operatorHeaders } = require('./_helpers/auth');
 
 function requestJson({ method, url, headers = {}, body }) {
   return new Promise((resolve, reject) => {
@@ -11,7 +12,7 @@ function requestJson({ method, url, headers = {}, body }) {
       hostname: target.hostname,
       port: target.port || (target.protocol === 'https:' ? 443 : 80),
       path: target.pathname + target.search,
-      headers: { ...headers }
+      headers: { ...operatorHeaders(), ...headers }
     };
 
     let payload = null;
@@ -68,6 +69,7 @@ function assertErrorEnvelope(body) {
 
 async function run() {
   const baseUrl = getBaseUrl();
+  const companyId = getCompanyId();
 
   const invalidIdRes = await requestJson({
     method: 'GET',
@@ -92,7 +94,7 @@ async function run() {
   const missingPersonId = `missing-${Math.random().toString(16).slice(2, 10)}`;
   const missingRes = await requestJson({
     method: 'GET',
-    url: `${baseUrl}/api/resolutions?company_id=DEFAULT&person_id=${encodeURIComponent(missingPersonId)}&date=2099-01-01`
+    url: `${baseUrl}/api/resolutions?company_id=${encodeURIComponent(companyId)}&person_id=${encodeURIComponent(missingPersonId)}&date=2099-01-01`
   });
 
   assert.strictEqual(missingRes.status, 404, 'missing attendance day should return 404');

@@ -39,7 +39,17 @@ try {
 
   Start-Sleep -Milliseconds 600
   try {
-    $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+    $probeKey = ''
+    if ($env:TEST_API_KEY_ADMIN) {
+      $probeKey = $env:TEST_API_KEY_ADMIN.ToString().Trim()
+    } elseif ($env:API_KEY) {
+      $probeKey = $env:API_KEY.ToString().Trim()
+    }
+    if ($probeKey) {
+      $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode" -Headers @{ 'x-api-key' = $probeKey }
+    } else {
+      $mode = Invoke-RestMethod "$baseUrl/api/ops/test/mode"
+    }
     Write-Host 'SERVER MODE:'
     $mode | ConvertTo-Json -Depth 6
   } catch {

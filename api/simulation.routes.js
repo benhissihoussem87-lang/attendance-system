@@ -9,6 +9,8 @@ const {
   ENGINE_CONTRACT,
   SIMULATION_OUTPUT_CONTRACT
 } = require('../contracts/systemContracts');
+const { requireApiKey, requireRole, enforceCompanyScope } = require('./lib/auth');
+const { sendError } = require('./lib/errorEnvelope');
 
 function parseDateUtc(date) {
   return new Date(date + 'T00:00:00Z');
@@ -18,19 +20,66 @@ function toDateStringUtc(date) {
   return date.toISOString().slice(0, 10);
 }
 
+function isValidDateString(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime());
+}
+
+function sendValidationError(res, error, detail) {
+  return sendError(res, {
+    status: 400,
+    code: 'VALIDATION_ERROR',
+    message: 'Validation failed',
+    details: {
+      kind: 'validation',
+      error,
+      detail
+    }
+  });
+}
+
 /**
  * POST /api/simulation/run
  * Simulation only - no DB writes
  */
-router.post('/run', async (req, res) => {
+router.post('/run', requireApiKey, enforceCompanyScope, requireRole('operator'), async (req, res) => {
   const {
     company_id,
     person_id,
     start_date,
     end_date,
-    alternate_rule_set
+    alternate_rule_set,
+    policy_profile_id,
+    policy_override,
+    rule_set_override
   } = req.body;
-  const companyId = company_id || 'DEFAULT';
+
+  if (!person_id || typeof person_id !== 'string' || !person_id.trim()) {
+    return sendValidationError(res, 'person_id_required', 'person_id is required');
+  }
+  if (!isValidDateString(start_date) || !isValidDateString(end_date)) {
+    return sendValidationError(res, 'date_invalid', 'start_date and end_date must be YYYY-MM-DD');
+  }
+  if (start_date > end_date) {
+    return sendValidationError(res, 'date_range_invalid', 'start_date must be <= end_date');
+  }
+  if (policy_profile_id !== undefined || policy_override !== undefined || rule_set_override !== undefined) {
+    return sendValidationError(
+      res,
+      'legacy_surface_unsupported_fields',
+      'policy_profile_id, policy_override, and rule_set_override are not supported on /api/simulation/run. Use /api/simulate/day or /api/simulate/range.'
+    );
+  }
+
+  const companyId = (req.ctx && req.ctx.company_id)
+    ? req.ctx.company_id
+    : (company_id || 'DEFAULT');
 
   const baselineRes = await db.query(`
     SELECT
@@ -172,11 +221,21 @@ const simulated = engine.computeDay({
     });
   }
 
+  res.set('Deprecation', 'true');
+  res.set('Sunset', 'Tue, 30 Jun 2026 00:00:00 GMT');
+
   res.json({
     system_version: SYSTEM_VERSION,
     contract: SIMULATION_OUTPUT_CONTRACT,
     engine_contract: ENGINE_CONTRACT,
     engine_version: ENGINE_VERSION,
+    legacy_surface: true,
+    bounded_mode: 'baseline_delta_only',
+    limitations: [
+      'This endpoint compares baseline attendance_days against alternate_rule_set simulation only.',
+      'It does not apply policy profile/override semantics (leave/non-working-day effective projection).',
+      'For current simulation truth model, use /api/simulate/day or /api/simulate/range.'
+    ],
     summary: {
       days_total: dates.length,
       days_changed,

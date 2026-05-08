@@ -12,9 +12,12 @@ tags:
   - name: ops
   - name: device-events
   - name: device-registry
+  - name: agent-admin
+  - name: agent-bridge
   - name: identity-mappings
   - name: employees-registry
   - name: attendance
+  - name: companies
   - name: company-profile
   - name: employee-assignments
   - name: employees
@@ -156,6 +159,8 @@ paths:
     get:
       tags: [device-registry]
       operationId: listDevices
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -169,6 +174,27 @@ paths:
           name: device_uid
           schema:
             type: string
+        - in: query
+          name: site_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: managed_status
+          schema:
+            type: string
+            enum: [candidate, managed, inactive, unreachable]
+        - in: query
+          name: manageability_status
+          schema:
+            type: string
+            enum: [unknown, reachable, protocol_reachable, blocked, manageable, ingesting]
+        - in: query
+          name: remediation_manual_status
+          schema:
+            type: string
+            enum: [needs_field_action, clear, none, "null"]
+        - $ref: "#/components/parameters/lifecycle_scope"
       responses:
         "200":
           description: Devices
@@ -186,6 +212,8 @@ paths:
     get:
       tags: [device-registry]
       operationId: getDevice
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/device_uid"
         - $ref: "#/components/parameters/company_id"
@@ -233,6 +261,8 @@ paths:
     put:
       tags: [device-registry]
       operationId: upsertDevice
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/device_uid"
         - $ref: "#/components/parameters/company_id"
@@ -277,6 +307,1674 @@ paths:
                       kind: validation
                       error: company_id_not_found
                       detail: company_id not found
+  /api/agent-admin/provisioning-tokens:
+    post:
+      tags: [agent-admin]
+      operationId: createAgentProvisioningToken
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentProvisioningTokenCreateRequest"
+      responses:
+        "201":
+          description: Provisioning token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProvisioningToken"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents/{agent_id}/commands/scan-subnet:
+    post:
+      tags: [agent-admin]
+      operationId: queueScanSubnetCommand
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanSubnetCommandRequest"
+      responses:
+        "201":
+          description: Command queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCommand"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents/{agent_id}/commands/pull-device-events:
+    post:
+      tags: [agent-admin]
+      operationId: queuePullDeviceEventsCommand
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: agent_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PullDeviceEventsCommandRequest"
+      responses:
+        "201":
+          description: Command queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCommand"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Agent/device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Pull command conflict (in-flight, lifecycle-binding, or execution-gate block)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                in_flight:
+                  summary: Existing in-flight pull command
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: command_already_in_flight
+                binding_missing:
+                  summary: Managed device has no active managing-agent binding
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: device_managing_agent_binding_missing
+                binding_conflict:
+                  summary: Queue requested from agent that is not actively bound
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: device_managing_agent_binding_conflict
+                execution_gate_site_context_missing_for_pull:
+                  summary: Pull issuance blocked because device has no formal site context under strict policy
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: site_context_missing_for_pull
+                      execution_gate:
+                        policy_profile: strict
+                        gate_mode: issuance
+                superseded_without_canonical:
+                  summary: Superseded device uid without canonical redirect target
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: device_uid_superseded_without_canonical
+                execution_gate_lease_mismatch:
+                  summary: Target agent is not the active site runtime
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: site_active_runtime_mismatch
+                      execution_gate:
+                        site_id: "11111111-1111-1111-1111-111111111111"
+                        active_site_agent_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+                        target_agent_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+                execution_gate_active_runtime_missing:
+                  summary: Site has no active runtime lease and command is policy-blocked
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: site_active_runtime_missing
+                      execution_gate:
+                        site_id: "11111111-1111-1111-1111-111111111111"
+                        policy_profile: balanced
+                execution_gate_stale_reported_state:
+                  summary: Site runtime reported state is stale
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_reported_state_stale
+                      execution_gate:
+                        site_id: "11111111-1111-1111-1111-111111111111"
+                        runtime_reported_stale: true
+                execution_gate_missing_reported_state:
+                  summary: Site runtime reported state is missing and command is policy-blocked
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_reported_state_missing
+                      execution_gate:
+                        runtime_health_status: unknown
+                        runtime_health_reason: site_runtime_reported_state_missing
+                execution_gate_version_unsupported:
+                  summary: Agent runtime version is below supported policy
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_version_unsupported
+                      execution_gate:
+                        version_support_status: unsupported
+                        version_support_reason: below_minimum_supported
+                execution_gate_runtime_capability_unknown:
+                  summary: Pull command capability evidence is unknown and policy blocks issuance
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_capability_unknown
+                      execution_gate:
+                        required_runtime_capability_key: command.pull_device_events
+                        runtime_capability_status: unknown
+                        policy_profile: balanced
+                execution_gate_runtime_capability_unsupported:
+                  summary: Runtime is healthy but pull command capability is unsupported
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_capability_unsupported
+                      execution_gate:
+                        required_runtime_capability_key: command.pull_device_events
+                        runtime_capability_status: unsupported
+                        runtime_capability_reason: runtime_missing_driver
+  /api/agent-admin/commands:
+    get:
+      tags: [agent-admin]
+      operationId: listAgentCommands
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: agent_id
+          schema:
+            type: string
+        - in: query
+          name: device_uid
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [queued, sent, acknowledged, failed, expired]
+        - in: query
+          name: created_from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: created_to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Agent command lifecycle list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentCommandsListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents:
+    get:
+      tags: [agent-admin]
+      operationId: listAgentNodes
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, inactive, revoked]
+        - in: query
+          name: seen_since
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Agent operational list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentNodesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/version-policy:
+    get:
+      tags: [agent-admin]
+      operationId: getAgentVersionPolicy
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+      responses:
+        "200":
+          description: Effective agent version governance policy for company scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersionPolicyReadResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      tags: [agent-admin]
+      operationId: updateAgentVersionPolicy
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentVersionPolicyUpdateRequest"
+      responses:
+        "200":
+          description: Company policy override updated and effective policy recomputed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVersionPolicyReadResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents/{agent_id}/runtime-identity:
+    get:
+      tags: [agent-admin]
+      operationId: getAgentRuntimeIdentity
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: path
+          name: agent_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: history_limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        "200":
+          description: Agent runtime identity state and bounded history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRuntimeIdentityReadResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents/{agent_id}/runtime-identity/reissue:
+    post:
+      tags: [agent-admin]
+      operationId: reissueAgentRuntimeIdentity
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: path
+          name: agent_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRuntimeIdentityReissueRequest"
+      responses:
+        "201":
+          description: Runtime identity reissued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRuntimeIdentityReissueResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Agent cannot be reissued in current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents/{agent_id}/runtime-identity/revoke:
+    post:
+      tags: [agent-admin]
+      operationId: revokeAgentRuntimeIdentity
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: path
+          name: agent_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentRuntimeIdentityRevokeRequest"
+      responses:
+        "200":
+          description: Runtime identity revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentRuntimeIdentityRevokeResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Runtime identity conflict (already inactive)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/agents/{agent_id}/site:
+    put:
+      tags: [agent-admin]
+      operationId: setAgentSiteAssignment
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: path
+          name: agent_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentSiteAssignmentRequest"
+      responses:
+        "200":
+          description: Agent site assignment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentSiteAssignmentResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Agent or site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/sites:
+    get:
+      tags: [agent-admin]
+      operationId: listSites
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, inactive]
+      responses:
+        "200":
+          description: Sites list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [agent-admin]
+      operationId: createSite
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteCreateRequest"
+      responses:
+        "201":
+          description: Site created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRecord"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: site_key conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/sites/{site_id}:
+    get:
+      tags: [agent-admin]
+      operationId: getSite
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/site_id"
+      responses:
+        "200":
+          description: Site record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRecord"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      tags: [agent-admin]
+      operationId: updateSite
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/site_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteUpdateRequest"
+      responses:
+        "200":
+          description: Site updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteRecord"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/sites/{site_id}/active-agent:
+    get:
+      tags: [agent-admin]
+      operationId: getSiteActiveAgent
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/site_id"
+      responses:
+        "200":
+          description: Active site runtime lease
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteActiveAgentReadResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      tags: [agent-admin]
+      operationId: setSiteActiveAgent
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/site_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteActiveAgentAssignmentRequest"
+      responses:
+        "200":
+          description: Active site runtime lease updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteActiveAgentAssignmentResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/sites/{site_id}/active-agent/history:
+    get:
+      tags: [agent-admin]
+      operationId: listSiteActiveAgentHistory
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/site_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Site runtime lease history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteActiveAgentLeaseHistoryResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/lifecycle-integrity:
+    get:
+      tags: [agent-admin]
+      operationId: getLifecycleIntegrityReport
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: include_details
+          schema:
+            type: boolean
+          description: Include bounded anomaly detail rows for strict/advisory checks.
+        - in: query
+          name: detail_limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          description: Maximum detail rows returned per anomaly category when include_details=true.
+      responses:
+        "200":
+          description: Lifecycle integrity report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LifecycleIntegrityReportResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/lifecycle-reconciliation/dry-run:
+    get:
+      tags: [agent-admin]
+      operationId: getLifecycleReconciliationDryRun
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: detail_limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          description: Maximum dry-run evidence rows per strict anomaly category.
+      responses:
+        "200":
+          description: Dry-run lifecycle reconciliation proposal report (strict anomalies only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LifecycleReconciliationDryRunResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/lifecycle-reconciliation/repair:
+    post:
+      tags: [agent-admin]
+      operationId: executeLifecycleReconciliationRepair
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LifecycleReconciliationRepairRequest"
+      responses:
+        "200":
+          description: Lifecycle reconciliation repair result (dry-run or explicit apply mode)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LifecycleReconciliationRepairResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Target not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Conflict detected for requested repair target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/device-event-batches:
+    get:
+      tags: [agent-admin]
+      operationId: listAgentDeviceEventBatches
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: agent_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: device_uid
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [accepted, partial, rejected]
+        - in: query
+          name: created_from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: created_to
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: pull_completed_from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: pull_completed_to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Device event batch diagnostics list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceEventBatchesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/device-events/recent:
+    get:
+      tags: [agent-admin]
+      operationId: listAgentRecentDeviceEvents
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - in: query
+          name: device_uid
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recent pulled device event rows (read-only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentDeviceEventsListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/monitoring-sessions:
+    post:
+      tags: [agent-admin]
+      operationId: startDeviceMonitoringSession
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_id:
+                  type: string
+                rt_enabled:
+                  type: boolean
+                lease_ttl_seconds:
+                  type: integer
+                  minimum: 30
+                  maximum: 86400
+                expires_at:
+                  type: string
+                  format: date-time
+                metadata:
+                  type: object
+      responses:
+        "200":
+          description: Existing active monitoring lease reused
+          content:
+            application/json:
+              schema:
+                type: object
+        "201":
+          description: Monitoring lease created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Device is not monitorable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/device-monitoring-sessions/{session_id}:
+    get:
+      tags: [agent-admin]
+      operationId: getDeviceMonitoringSession
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Monitoring lease
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Monitoring lease not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [agent-admin]
+      operationId: stopDeviceMonitoringSession
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                company_id:
+                  type: string
+                stop_reason:
+                  type: string
+      responses:
+        "200":
+          description: Monitoring lease stopped or already terminal
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          description: Monitoring lease not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/realtime-observations:
+    get:
+      tags: [agent-admin]
+      operationId: listDeviceRealtimeObservations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - in: query
+          name: agent_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: after_created_at
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: after_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: observed_from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: observed_to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Realtime observation rows
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [value, count]
+                properties:
+                  value:
+                    type: array
+                    items:
+                      type: object
+                  count:
+                    type: integer
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/realtime-observations/stream:
+    get:
+      tags: [agent-admin]
+      operationId: streamDeviceRealtimeObservations
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: agent_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: after_created_at
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: after_id
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Server-sent event stream of realtime observations
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/discovered-devices:
+    get:
+      tags: [agent-admin]
+      operationId: listDiscoveredCandidateDevices
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Candidate devices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateDevicesListResponse"
+  /api/agent-admin/devices/manual-onboarding:
+    post:
+      tags: [agent-admin]
+      operationId: upsertManualOnboardingCandidate
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManualDeviceOnboardingRequest"
+      responses:
+        "200":
+          description: Manual onboarding candidate updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManualDeviceOnboardingResponse"
+        "201":
+          description: Manual onboarding candidate created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManualDeviceOnboardingResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Lifecycle conflict (existing non-candidate or superseded uid without canonical target)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/onboarding-readiness:
+    get:
+      tags: [agent-admin]
+      operationId: getDeviceOnboardingReadiness
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+        - in: query
+          name: online_window_minutes
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 240
+          description: Window in minutes used to classify managing-agent online status.
+      responses:
+        "200":
+          description: Device onboarding/readiness read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceOnboardingReadinessResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Lifecycle conflict (superseded uid without canonical target)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/validate:
+    post:
+      tags: [agent-admin]
+      operationId: queueManualDeviceValidation
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManualDeviceValidationRequest"
+      responses:
+        "202":
+          description: Validation command queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManualDeviceValidationResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Lifecycle conflict (non-candidate, non-bridge scope, in-flight validation, superseded uid without canonical, or execution-gate block)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                validation_in_flight:
+                  summary: Existing in-flight validation command
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: validation_command_already_in_flight
+                execution_gate_offline:
+                  summary: Active runtime reported offline
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_health_offline
+                      execution_gate:
+                        runtime_health_status: offline
+                        runtime_health_reason: heartbeat_missing
+                execution_gate_version_unknown:
+                  summary: Runtime version is unknown/stale (policy-dependent block)
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_version_unknown
+                      execution_gate:
+                        version_support_status: unknown
+                        policy_profile: strict
+                execution_gate_version_outdated_blocked:
+                  summary: Runtime version is outdated and blocked by strict policy
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: runtime_version_outdated
+                      execution_gate:
+                        version_support_status: outdated
+                        policy_profile: strict
+                execution_gate_device_path_capability_disabled:
+                  summary: Device path capability is disabled by policy/config
+                  value:
+                    error: bad_request
+                    code: CONFLICT
+                    message: Conflict
+                    details:
+                      kind: conflict
+                      error: device_path_capability_disabled
+                      execution_gate:
+                        required_device_capability_key: device_path.validate_device_candidate
+                        device_path_capability_status: disabled
+                        device_path_capability_reason: policy_disabled
+  /api/agent-admin/devices/{device_uid}/site:
+    put:
+      tags: [agent-admin]
+      operationId: setDeviceSiteAssignment
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceSiteAssignmentRequest"
+      responses:
+        "200":
+          description: Device site assignment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceSiteAssignmentResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device or site not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Lifecycle conflict (superseded uid without canonical target)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/device-sync-states:
+    get:
+      tags: [agent-admin]
+      operationId: listAgentDeviceSyncStates
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: agent_id
+          schema:
+            type: string
+        - in: query
+          name: device_uid
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Device sync states
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceSyncStatesListResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/discovered-devices/{device_uid}/claim:
+    post:
+      tags: [agent-admin]
+      operationId: claimDiscoveredDevice
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimDiscoveredDeviceRequest"
+      responses:
+        "200":
+          description: Device claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "404":
+          description: Candidate not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/managing-agent-binding:
+    put:
+      tags: [agent-admin]
+      operationId: setManagingAgentBinding
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManagingAgentBindingRequest"
+      responses:
+        "200":
+          description: Managing-agent binding updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagingAgentBindingResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device or agent not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Lifecycle conflict (device not managed, agent inactive, or superseded uid without canonical target)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent-admin/devices/{device_uid}/remediation:
+    put:
+      tags: [agent-admin]
+      operationId: setDeviceManualRemediation
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/device_uid"
+        - $ref: "#/components/parameters/company_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceRemediationRequest"
+      responses:
+        "200":
+          description: Device remediation state updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent/bootstrap:
+    post:
+      tags: [agent-bridge]
+      operationId: bootstrapAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentBootstrapRequest"
+      responses:
+        "201":
+          description: Agent registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentBootstrapResponse"
+        "400":
+          description: Invalid token or payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent/heartbeat:
+    post:
+      tags: [agent-bridge]
+      operationId: postAgentHeartbeat
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentHeartbeatRequest"
+      responses:
+        "200":
+          description: Heartbeat accepted
+          content:
+            application/json:
+              schema:
+                type: object
+        "503":
+          description: Runtime schema is not ready for capability/reported-state writes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent/commands/next:
+    post:
+      tags: [agent-bridge]
+      operationId: fetchAgentNextCommand
+      security:
+        - AgentBearerAuth: []
+      responses:
+        "200":
+          description: Next command
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/agent/discovery-reports:
+    post:
+      tags: [agent-bridge]
+      operationId: submitAgentDiscoveryReport
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoveryReportRequest"
+      responses:
+        "201":
+          description: Report accepted
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/agent/device-validations/result:
+    post:
+      tags: [agent-bridge]
+      operationId: submitAgentDeviceValidationResult
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDeviceValidationResultRequest"
+      responses:
+        "201":
+          description: Validation result accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDeviceValidationResultResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Validation command not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Lifecycle conflict (command not pending, uid mismatch, or superseded uid without canonical)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/agent/device-events/batch:
+    post:
+      tags: [agent-bridge]
+      operationId: submitAgentDeviceEventsBatch
+      security:
+        - AgentBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDeviceEventsBatchRequest"
+      responses:
+        "201":
+          description: Batch accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDeviceEventsBatchResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Device not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Runtime schema is not ready for capability/reported-state writes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/identity-mappings:
     get:
       tags: [identity-mappings]
@@ -648,10 +2346,89 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /api/companies:
+    get:
+      tags: [companies]
+      operationId: listCompanies
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/company_id"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - in: query
+          name: include_inactive
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Companies list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [value, count]
+                properties:
+                  value:
+                    type: array
+                    items:
+                      type: object
+                  count:
+                    type: integer
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      tags: [companies]
+      operationId: createCompany
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [company_id, display_name]
+              properties:
+                company_id:
+                  type: string
+                display_name:
+                  type: string
+                country:
+                  type: string
+                timezone:
+                  type: string
+                is_active:
+                  type: boolean
+      responses:
+        "201":
+          description: Company created
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Company already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /api/company-profile:
     get:
       tags: [company-profile]
       operationId: getCompanyProfile
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -707,6 +2484,8 @@ paths:
     put:
       tags: [company-profile]
       operationId: upsertCompanyProfile
+      security:
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/company_id"
         - $ref: "#/components/parameters/x-company-id"
@@ -870,6 +2649,8 @@ paths:
     get:
       tags: [employee-assignments]
       operationId: listEmployeeAssignments
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Employee assignments
@@ -906,6 +2687,8 @@ paths:
     put:
       tags: [employee-assignments]
       operationId: upsertEmployeeAssignment
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Upserted
@@ -1386,6 +3169,8 @@ paths:
     post:
       tags: [simulation]
       operationId: simulateDay
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Simulation result
@@ -1423,6 +3208,8 @@ paths:
     post:
       tags: [simulation]
       operationId: simulateRange
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Simulation result
@@ -1460,9 +3247,32 @@ paths:
     post:
       tags: [simulation]
       operationId: runSimulation
+      deprecated: true
+      description: |
+        Legacy bounded simulation surface.
+        Use `/api/simulate/day` or `/api/simulate/range` for the current simulation truth model
+        with policy/effective semantics.
+      security:
+        - ApiKeyAuth: []
       responses:
         "200":
           description: Simulation result
+        "400":
+          description: Validation failed or unsupported legacy-surface fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                unsupported_fields:
+                  summary: Unsupported fields on legacy simulation surface
+                  value:
+                    error: bad_request
+                    code: VALIDATION_ERROR
+                    message: Validation failed
+                    details:
+                      kind: validation
+                      error: legacy_surface_unsupported_fields
   /api/system/health:
     get:
       tags: [system]
@@ -1491,6 +3301,10 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+    AgentBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
   parameters:
     company_id:
       name: company_id
@@ -1522,6 +3336,12 @@ components:
         type: integer
         default: 0
         minimum: 0
+    lifecycle_scope:
+      name: lifecycle_scope
+      in: query
+      schema:
+        type: string
+        enum: [bridge_ops, ingest_only]
     active_query:
       name: active
       in: query
@@ -1536,6 +3356,13 @@ components:
       required: true
       schema:
         type: string
+    site_id:
+      name: site_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
   responses:
     Unauthorized:
       description: Unauthorized
@@ -1751,6 +3578,78 @@ components:
           type: boolean
         metadata:
           type: object
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_key:
+          type: string
+          nullable: true
+        site_name:
+          type: string
+          nullable: true
+        site_status:
+          type: string
+          enum: [active, inactive]
+          nullable: true
+        managed_status:
+          type: string
+        discovery_status:
+          type: string
+        discovered_by_agent_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        claimed_at:
+          type: string
+        claimed_by_key_id:
+          type: string
+        last_seen_at:
+          type: string
+        discovery_metadata:
+          type: object
+        manageability_status:
+          type: string
+          enum: [unknown, reachable, protocol_reachable, blocked, manageable, ingesting]
+        manageability_reason:
+          type: string
+          nullable: true
+        manageability_updated_at:
+          type: string
+          format: date-time
+        manageability_last_proven_at:
+          type: string
+          format: date-time
+          nullable: true
+        remediation_manual_status:
+          type: string
+          enum: [needs_field_action]
+          nullable: true
+        remediation_manual_note:
+          type: string
+          nullable: true
+        remediation_manual_owner:
+          type: string
+          nullable: true
+        remediation_manual_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        remediation_manual_updated_by_key_id:
+          type: string
+          nullable: true
+        lifecycle_scope:
+          type: string
+          enum: [bridge_ops, ingest_only]
+        identity_status:
+          type: string
+          enum: [canonical, superseded]
+        superseded_by_device_uid:
+          type: string
+          nullable: true
+        manageability:
+          $ref: "#/components/schemas/ManageabilityView"
         created_at:
           type: string
         updated_at:
@@ -1767,6 +3666,2251 @@ components:
             $ref: "#/components/schemas/Device"
         Count:
           type: integer
+    AgentProvisioningTokenCreateRequest:
+      type: object
+      properties:
+        company_id:
+          type: string
+        ttl_minutes:
+          type: integer
+        metadata:
+          type: object
+    AgentProvisioningToken:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        provisioning_token:
+          type: string
+        token_prefix:
+          type: string
+        expires_at:
+          type: string
+        created_at:
+          type: string
+    ScanSubnetCommandRequest:
+      type: object
+      required:
+        - subnet_targets
+      properties:
+        company_id:
+          type: string
+        subnet_targets:
+          type: array
+          items:
+            type: string
+        options:
+          type: object
+          properties:
+            adapter:
+              type: string
+            timeout_ms:
+              type: integer
+            max_hosts:
+              type: integer
+            auth_password:
+              type: integer
+    PullDeviceEventsCommandRequest:
+      type: object
+      required:
+        - device_uid
+      properties:
+        company_id:
+          type: string
+        device_uid:
+          type: string
+        options:
+          type: object
+          properties:
+            host:
+              type: string
+            port:
+              type: integer
+            auth_password:
+              type: integer
+            lookback_minutes:
+              type: integer
+            safety_window_minutes:
+              type: integer
+            max_events:
+              type: integer
+            command_ttl_seconds:
+              type: integer
+            sent_stale_seconds:
+              type: integer
+            since_utc:
+              type: string
+              format: date-time
+            device_timezone:
+              type: string
+            enable_realtime:
+              type: boolean
+    AgentCommandLifecycleEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        command_type:
+          type: string
+        command_payload:
+          type: object
+        status:
+          type: string
+          enum: [queued, sent, acknowledged, failed, expired]
+        available_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        acknowledged_at:
+          type: string
+          format: date-time
+          nullable: true
+        failure_reason:
+          type: string
+          nullable: true
+        result_payload:
+          type: object
+    AgentCommand:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        command_type:
+          type: string
+        command_payload:
+          type: object
+        status:
+          type: string
+        created_at:
+          type: string
+    AgentCommandsListResponse:
+      type: object
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentCommandLifecycleEntry"
+        count:
+          type: integer
+    AgentNodeOperationalEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, revoked]
+        identity_status:
+          type: string
+          enum: [bootstrap_only, active, revoked, replaced]
+        active_runtime_identity_id:
+          type: string
+          format: uuid
+          nullable: true
+        runtime_identity_status:
+          type: string
+          enum: [active, revoked, replaced, legacy_bootstrap]
+          nullable: true
+        runtime_identity_issued_at:
+          type: string
+          format: date-time
+          nullable: true
+        runtime_identity_revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_key:
+          type: string
+          nullable: true
+        site_name:
+          type: string
+          nullable: true
+        site_status:
+          type: string
+          enum: [active, inactive]
+          nullable: true
+        site_active_lease_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_active_agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_active_leased_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_site_active_runtime:
+          type: boolean
+          nullable: true
+        site_runtime_reporting_agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_runtime_health_status:
+          type: string
+          enum: [healthy, degraded, blocked, offline, unknown]
+          nullable: true
+        site_runtime_health_reason:
+          type: string
+          nullable: true
+        site_runtime_reported_at:
+          type: string
+          format: date-time
+          nullable: true
+        site_runtime_last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        site_runtime_last_poll_at:
+          type: string
+          format: date-time
+          nullable: true
+        site_runtime_reported_stale:
+          type: boolean
+          nullable: true
+        agent_reported_version:
+          type: string
+          nullable: true
+        agent_reported_rollout_channel:
+          type: string
+          enum: [stable, beta]
+          nullable: true
+        agent_version_reported_at:
+          type: string
+          format: date-time
+          nullable: true
+        version_support_status:
+          type: string
+          enum: [supported, outdated, unsupported, unknown]
+          nullable: true
+        version_support_level:
+          type: string
+          enum: [healthy, degraded, blocked, unknown]
+          nullable: true
+        version_support_reason:
+          type: string
+          nullable: true
+        version_reported_stale:
+          type: boolean
+          nullable: true
+        version_stale_after_minutes:
+          type: integer
+          nullable: true
+        minimum_supported_version:
+          type: string
+          nullable: true
+        target_version:
+          type: string
+          nullable: true
+        policy_rollout_channel:
+          type: string
+          enum: [stable, beta]
+          nullable: true
+        version_policy_source:
+          type: string
+          enum: [global, company_override]
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    AgentNodesListResponse:
+      type: object
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentNodeOperationalEntry"
+        count:
+          type: integer
+    AgentVersionPolicyEntry:
+      type: object
+      properties:
+        policy_scope:
+          type: string
+          enum: [global, company]
+        company_id:
+          type: string
+          nullable: true
+        minimum_supported_version:
+          type: string
+        target_version:
+          type: string
+          nullable: true
+        rollout_channel:
+          type: string
+          enum: [stable, beta]
+        metadata:
+          type: object
+        updated_by_key_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        policy_source:
+          type: string
+          enum: [global, company_override]
+          nullable: true
+    AgentVersionPolicyReadResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        global_policy:
+          $ref: "#/components/schemas/AgentVersionPolicyEntry"
+        company_policy_override:
+          allOf:
+            - $ref: "#/components/schemas/AgentVersionPolicyEntry"
+          nullable: true
+        effective_policy:
+          $ref: "#/components/schemas/AgentVersionPolicyEntry"
+        updated_override:
+          allOf:
+            - $ref: "#/components/schemas/AgentVersionPolicyEntry"
+          nullable: true
+    AgentVersionPolicyUpdateRequest:
+      type: object
+      required:
+        - minimum_supported_version
+      properties:
+        minimum_supported_version:
+          type: string
+        target_version:
+          type: string
+          nullable: true
+        rollout_channel:
+          type: string
+          enum: [stable, beta]
+        metadata:
+          type: object
+    AgentRuntimeIdentityRecord:
+      type: object
+      properties:
+        identity_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, revoked, replaced]
+        issued_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        issued_from_token_id:
+          type: string
+          format: uuid
+          nullable: true
+        replaced_by_identity_id:
+          type: string
+          format: uuid
+          nullable: true
+        replaced_reason:
+          type: string
+          nullable: true
+        credential_prefix:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AgentRuntimeIdentityReadResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        agent_status:
+          type: string
+          enum: [active, inactive, revoked]
+        credential_version:
+          type: integer
+        identity_status:
+          type: string
+          enum: [bootstrap_only, active, revoked, replaced]
+        active_runtime_identity_id:
+          type: string
+          format: uuid
+          nullable: true
+        runtime_identity_issued_at:
+          type: string
+          format: date-time
+          nullable: true
+        active_runtime_identity:
+          allOf:
+            - $ref: "#/components/schemas/AgentRuntimeIdentityRecord"
+          nullable: true
+        runtime_identity_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentRuntimeIdentityRecord"
+    AgentRuntimeIdentityReissueRequest:
+      type: object
+      properties:
+        company_id:
+          type: string
+        reason:
+          type: string
+        metadata:
+          type: object
+    AgentRuntimeIdentityReissueResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        agent_status:
+          type: string
+          enum: [active, inactive, revoked]
+        credential_version:
+          type: integer
+        identity_status:
+          type: string
+          enum: [bootstrap_only, active, revoked, replaced]
+        active_runtime_identity_id:
+          type: string
+          format: uuid
+        previous_runtime_identity_id:
+          type: string
+          format: uuid
+          nullable: true
+        runtime_identity_issued_at:
+          type: string
+          format: date-time
+          nullable: true
+        auth_token:
+          type: string
+    AgentRuntimeIdentityRevokeRequest:
+      type: object
+      properties:
+        company_id:
+          type: string
+        reason:
+          type: string
+        metadata:
+          type: object
+    AgentRuntimeIdentityRevokeResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        agent_status:
+          type: string
+          enum: [active, inactive, revoked]
+        credential_version:
+          type: integer
+        identity_status:
+          type: string
+          enum: [bootstrap_only, active, revoked, replaced]
+        revoked_runtime_identity_id:
+          type: string
+          format: uuid
+        revoked_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+    SiteRecord:
+      type: object
+      properties:
+        site_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        site_key:
+          type: string
+        site_name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        active_lease_id:
+          type: string
+          format: uuid
+          nullable: true
+        active_agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        active_leased_at:
+          type: string
+          format: date-time
+          nullable: true
+        active_agent_name:
+          type: string
+          nullable: true
+        active_agent_status:
+          type: string
+          enum: [active, inactive, revoked]
+          nullable: true
+        active_agent_last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        active_agent_last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+    SiteListResponse:
+      type: object
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteRecord"
+        count:
+          type: integer
+    SiteCreateRequest:
+      type: object
+      required:
+        - site_name
+      properties:
+        company_id:
+          type: string
+        site_key:
+          type: string
+        site_name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        metadata:
+          type: object
+    SiteUpdateRequest:
+      type: object
+      properties:
+        company_id:
+          type: string
+        site_name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        metadata:
+          type: object
+    AgentSiteAssignmentRequest:
+      type: object
+      required:
+        - site_id
+      properties:
+        company_id:
+          type: string
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+    AgentSiteAssignmentResponse:
+      $ref: "#/components/schemas/AgentNodeOperationalEntry"
+    SiteActiveAgentLeaseRecord:
+      type: object
+      properties:
+        lease_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        site_id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, superseded, released]
+        leased_at:
+          type: string
+          format: date-time
+        released_at:
+          type: string
+          format: date-time
+          nullable: true
+        leased_by_key_id:
+          type: string
+          nullable: true
+        released_by_key_id:
+          type: string
+          nullable: true
+        superseded_by_lease_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        agent_name:
+          type: string
+          nullable: true
+        agent_status:
+          type: string
+          enum: [active, inactive, revoked]
+          nullable: true
+        agent_last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        agent_last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        agent_site_id:
+          type: string
+          format: uuid
+          nullable: true
+    SiteActiveAgentReadResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        site_id:
+          type: string
+          format: uuid
+        site_key:
+          type: string
+        site_name:
+          type: string
+        site_status:
+          type: string
+          enum: [active, inactive]
+        active_lease:
+          allOf:
+            - $ref: "#/components/schemas/SiteActiveAgentLeaseRecord"
+          nullable: true
+    SiteActiveAgentAssignmentRequest:
+      type: object
+      required:
+        - agent_id
+      properties:
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        metadata:
+          type: object
+    SiteActiveAgentAssignmentResponse:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [assigned, reassigned, released, no_change]
+        site:
+          type: object
+          properties:
+            site_id:
+              type: string
+              format: uuid
+            company_id:
+              type: string
+            site_key:
+              type: string
+            site_name:
+              type: string
+            status:
+              type: string
+              enum: [active, inactive]
+        active_lease:
+          allOf:
+            - $ref: "#/components/schemas/SiteActiveAgentLeaseRecord"
+          nullable: true
+        previous_active_lease:
+          allOf:
+            - $ref: "#/components/schemas/SiteActiveAgentLeaseRecord"
+          nullable: true
+    SiteActiveAgentLeaseHistoryResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        site_id:
+          type: string
+          format: uuid
+        site_key:
+          type: string
+        site_name:
+          type: string
+        site_status:
+          type: string
+          enum: [active, inactive]
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteActiveAgentLeaseRecord"
+        count:
+          type: integer
+    DeviceSiteAssignmentRequest:
+      type: object
+      required:
+        - site_id
+      properties:
+        company_id:
+          type: string
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+    DeviceSiteAssignmentResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        requested_device_uid:
+          type: string
+        canonical_device_uid:
+          type: string
+        canonical_resolved_by:
+          type: string
+          nullable: true
+        canonical_alias_kind:
+          type: string
+          nullable: true
+        canonical_alias_status:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        device_name:
+          type: string
+          nullable: true
+        managed_status:
+          type: string
+          nullable: true
+        lifecycle_scope:
+          type: string
+          nullable: true
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_key:
+          type: string
+          nullable: true
+        site_name:
+          type: string
+          nullable: true
+        site_status:
+          type: string
+          enum: [active, inactive]
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    LifecycleIntegrityRequiredMigration:
+      type: object
+      properties:
+        filename:
+          type: string
+        status:
+          type: string
+          enum: [applied, missing]
+        scope:
+          type: string
+          enum: [global]
+    LifecycleIntegritySummaryRow:
+      type: object
+      properties:
+        company_id:
+          type: string
+        lifecycle_scope:
+          type: string
+        managed_status:
+          type: string
+        identity_status:
+          type: string
+        row_count:
+          type: integer
+    LifecycleIntegrityCheck:
+      type: object
+      properties:
+        check_name:
+          type: string
+        severity:
+          type: string
+          enum: [strict, advisory]
+        issue_count:
+          type: integer
+        description:
+          type: string
+    LifecycleIntegrityChecks:
+      type: object
+      properties:
+        strict:
+          type: array
+          items:
+            $ref: "#/components/schemas/LifecycleIntegrityCheck"
+        advisory:
+          type: array
+          items:
+            $ref: "#/components/schemas/LifecycleIntegrityCheck"
+    LifecycleIntegrityDetailGroups:
+      type: object
+      properties:
+        detail_limit:
+          type: integer
+        strict:
+          type: object
+          properties:
+            superseded_without_canonical:
+              type: array
+              items:
+                type: object
+            canonical_with_superseded_pointer:
+              type: array
+              items:
+                type: object
+            managed_bridge_missing_active_binding:
+              type: array
+              items:
+                type: object
+            active_binding_on_non_bridge_or_non_managed_device:
+              type: array
+              items:
+                type: object
+            canonical_device_missing_active_device_uid_alias:
+              type: array
+              items:
+                type: object
+            active_alias_points_to_superseded_canonical:
+              type: array
+              items:
+                type: object
+        advisory:
+          type: object
+          properties:
+            ingest_only_with_bridge_evidence_advisory:
+              type: array
+              items:
+                type: object
+            active_serial_alias_multi_canonical_advisory:
+              type: array
+              items:
+                type: object
+            active_mac_alias_multi_canonical_advisory:
+              type: array
+              items:
+                type: object
+    LifecycleIntegrityReportResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        required_migrations:
+          type: array
+          items:
+            $ref: "#/components/schemas/LifecycleIntegrityRequiredMigration"
+        lifecycle_summary:
+          type: array
+          items:
+            $ref: "#/components/schemas/LifecycleIntegritySummaryRow"
+        checks:
+          $ref: "#/components/schemas/LifecycleIntegrityChecks"
+        strict_issue_count_total:
+          type: integer
+        advisory_issue_count_total:
+          type: integer
+        details:
+          oneOf:
+            - $ref: "#/components/schemas/LifecycleIntegrityDetailGroups"
+            - type: "null"
+    LifecycleReconciliationCategory:
+      type: object
+      properties:
+        anomaly_type:
+          type: string
+        issue_count:
+          type: integer
+        detail_rows_included:
+          type: integer
+        description:
+          type: string
+    LifecycleReconciliationAnomalyDetected:
+      type: object
+      properties:
+        anomaly_type:
+          type: string
+        severity:
+          type: string
+          enum: [strict]
+        description:
+          type: string
+        evidence:
+          type: object
+    LifecycleReconciliationProposedAction:
+      type: object
+      properties:
+        action_type:
+          type: string
+        target_table:
+          type: string
+          nullable: true
+        action_mode:
+          type: string
+          enum: [dry_run_only]
+        candidate_parameters:
+          type: object
+    LifecycleReconciliationFinding:
+      type: object
+      properties:
+        anomaly_detected:
+          $ref: "#/components/schemas/LifecycleReconciliationAnomalyDetected"
+        proposed_repair_action:
+          $ref: "#/components/schemas/LifecycleReconciliationProposedAction"
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        safety_level:
+          type: string
+          enum: [safe_auto, needs_review, manual_required]
+        rationale:
+          type: string
+        write_mode:
+          type: string
+          enum: [dry_run_only]
+    LifecycleReconciliationDryRunResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [dry_run]
+        strict_only:
+          type: boolean
+        detail_limit:
+          type: integer
+        strict_categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/LifecycleReconciliationCategory"
+        strict_issue_count_total:
+          type: integer
+        findings_count:
+          type: integer
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/LifecycleReconciliationFinding"
+        notes:
+          type: array
+          items:
+            type: string
+    LifecycleReconciliationRepairRequest:
+      type: object
+      required: [company_id, anomaly_type, target_device_uid]
+      properties:
+        company_id:
+          type: string
+        anomaly_type:
+          type: string
+          description: >
+            Supported in this controlled-repair slice:
+            canonical_device_missing_active_device_uid_alias
+        target_device_uid:
+          type: string
+          description: Device UID (canonical or resolvable alias) to evaluate/repair.
+        apply:
+          type: boolean
+          default: false
+          description: Set true to execute writes; false keeps dry-run/no-write mode.
+        reason:
+          type: string
+        correlation_id:
+          type: string
+        metadata:
+          type: object
+    LifecycleReconciliationRepairResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        mode:
+          type: string
+          enum: [dry_run, apply]
+        write_executed:
+          type: boolean
+        repair_result:
+          type: string
+          enum: [planned, repaired, noop_already_correct]
+        anomaly_type:
+          type: string
+        supported_anomaly_types:
+          type: array
+          items:
+            type: string
+        requested_device_uid:
+          type: string
+        canonical_device_uid:
+          type: string
+        canonical_resolved_by:
+          type: string
+        canonical_alias_kind:
+          type: string
+        canonical_alias_status:
+          type: string
+        anomaly_present:
+          type: boolean
+        repair_action:
+          type: string
+          enum: [insert_active_device_uid_self_alias, reactivate_device_uid_self_alias, none, blocked_conflict]
+        blocked_reason:
+          type: string
+        lifecycle_event_written:
+          type: boolean
+        anomaly_detected:
+          $ref: "#/components/schemas/LifecycleReconciliationAnomalyDetected"
+        proposed_repair_action:
+          $ref: "#/components/schemas/LifecycleReconciliationProposedAction"
+        confidence:
+          type: string
+          enum: [high, medium, low]
+        safety_level:
+          type: string
+          enum: [safe_auto, needs_review, manual_required]
+        rationale:
+          type: string
+        repaired_alias:
+          type: object
+        target_alias:
+          type: object
+        active_other_canonical_alias:
+          type: object
+    CandidateDevicesListResponse:
+      type: object
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/Device"
+        count:
+          type: integer
+    DeviceSyncState:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        device_uid:
+          type: string
+        vendor:
+          type: string
+        sync_mode:
+          type: string
+        status:
+          type: string
+        cursor_event_time_utc:
+          type: string
+        safety_window_seconds:
+          type: integer
+        last_sync_started_at:
+          type: string
+        last_sync_completed_at:
+          type: string
+        last_event_time_utc:
+          type: string
+        last_event_time_local:
+          type: string
+        last_pull_count:
+          type: integer
+        last_submit_count:
+          type: integer
+        consecutive_failures:
+          type: integer
+        failure_reason:
+          type: string
+        last_error_at:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+        updated_at:
+          type: string
+    DeviceSyncStatesListResponse:
+      type: object
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceSyncState"
+        count:
+          type: integer
+    DeviceEventBatchRejectionSample:
+      type: object
+      properties:
+        code:
+          type: string
+          nullable: true
+        device_person_id:
+          type: string
+          nullable: true
+        event_time_utc:
+          type: string
+          format: date-time
+          nullable: true
+    DeviceEventBatchOperationalEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        device_uid:
+          type: string
+        command_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [accepted, partial, rejected]
+        failure_reason:
+          type: string
+          nullable: true
+        inserted_count:
+          type: integer
+        deduped_count:
+          type: integer
+        rejected_count:
+          type: integer
+        pull_completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        rejection_sample_count:
+          type: integer
+        rejection_samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventBatchRejectionSample"
+    DeviceEventBatchesListResponse:
+      type: object
+      properties:
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceEventBatchOperationalEntry"
+        count:
+          type: integer
+    RecentDeviceEventRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        device_uid:
+          type: string
+        person_id:
+          type: string
+        device_person_id:
+          type: string
+        event_time_utc:
+          type: string
+          format: date-time
+        event_time_local:
+          type: string
+        direction:
+          type: string
+        verify_state:
+          type: string
+        verify_method:
+          type: string
+        vendor:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    RecentDeviceEventsListResponse:
+      type: object
+      properties:
+        requested_device_uid:
+          type: string
+          nullable: true
+        canonical_device_uid:
+          type: string
+          nullable: true
+        canonical_resolved_by:
+          type: string
+          nullable: true
+        canonical_alias_kind:
+          type: string
+          nullable: true
+        canonical_alias_status:
+          type: string
+          nullable: true
+        value:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentDeviceEventRow"
+        count:
+          type: integer
+    ClaimDiscoveredDeviceRequest:
+      type: object
+      properties:
+        company_id:
+          type: string
+        provider:
+          type: string
+        device_name:
+          type: string
+        metadata:
+          type: object
+    ManualDeviceIdentity:
+      type: object
+      properties:
+        serial_number:
+          type: string
+        mac:
+          type: string
+    ManualDeviceConnection:
+      type: object
+      properties:
+        host:
+          type: string
+          description: RFC1918 private IPv4 address
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        communication_key:
+          type: integer
+          minimum: 0
+          maximum: 99999999
+          description: Operator-facing communication/auth key. Equivalent to auth_password for backend compatibility.
+        auth_password:
+          type: integer
+          minimum: 0
+          maximum: 99999999
+          description: Backward-compatible alias of communication_key.
+        device_number:
+          type: integer
+          minimum: 0
+          maximum: 65535
+        transport:
+          type: string
+          enum: [udp, tcp, auto]
+        attlog_sequence:
+          type: string
+          enum: [off, deviceid_platform, deviceid_platform_version, zktime_k80]
+    ManualDeviceProfile:
+      type: object
+      properties:
+        model:
+          type: string
+        firmware:
+          type: string
+    ManualDeviceSiteContext:
+      type: object
+      properties:
+        site_label:
+          type: string
+          description: Informational label only; does not create normalized site identity.
+    ManualDeviceOperatorNotes:
+      type: object
+      properties:
+        label:
+          type: string
+        notes:
+          type: string
+    ManualDeviceOnboardingRequest:
+      type: object
+      required:
+        - provider
+      properties:
+        company_id:
+          type: string
+        provider:
+          type: string
+        device_uid:
+          type: string
+          description: Optional; when omitted the system derives canonical device_uid from serial, MAC, or host identity.
+        device_name:
+          type: string
+        identity:
+          $ref: "#/components/schemas/ManualDeviceIdentity"
+        connection:
+          $ref: "#/components/schemas/ManualDeviceConnection"
+        device_profile:
+          $ref: "#/components/schemas/ManualDeviceProfile"
+        site_context:
+          $ref: "#/components/schemas/ManualDeviceSiteContext"
+        operator_notes:
+          $ref: "#/components/schemas/ManualDeviceOperatorNotes"
+        correlation_id:
+          type: string
+    ManualDeviceOnboardingResponse:
+      type: object
+      required:
+        - company_id
+        - device_uid
+        - provider
+        - managed_status
+        - lifecycle_scope
+        - configuration_status
+        - missing_required_fields
+        - ready_for_validation
+        - validation_status
+        - onboarding_state
+      properties:
+        company_id:
+          type: string
+        device_uid:
+          type: string
+        provider:
+          type: string
+        managed_status:
+          type: string
+          enum: [candidate]
+        lifecycle_scope:
+          type: string
+          enum: [bridge_ops]
+        configuration_status:
+          type: string
+          enum: [complete, incomplete]
+        missing_required_fields:
+          type: array
+          items:
+            type: string
+        ready_for_validation:
+          type: boolean
+        validation_status:
+          type: string
+          enum: [never_run, queued, in_progress, failed, succeeded]
+        validation_reason_code:
+          type: string
+          nullable: true
+        validation_last_requested_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_started_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_failure_at:
+          type: string
+          format: date-time
+          nullable: true
+        onboarding_state:
+          type: string
+          enum:
+            - candidate_unconfigured
+            - candidate_configured
+            - validation_failed
+            - validation_succeeded
+            - managed_unbound
+            - managed_pull_ready
+    ManualDeviceValidationRequest:
+      type: object
+      required:
+        - agent_id
+      properties:
+        company_id:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        options:
+          type: object
+          properties:
+            timeout_ms:
+              type: integer
+            max_packets:
+              type: integer
+            probe_mode:
+              type: boolean
+            command_ttl_seconds:
+              type: integer
+            sent_stale_seconds:
+              type: integer
+        correlation_id:
+          type: string
+    ManualDeviceValidationResponse:
+      type: object
+      required:
+        - company_id
+        - canonical_device_uid
+        - managed_status
+        - lifecycle_scope
+        - configuration_status
+        - missing_required_fields
+        - ready_for_validation
+        - validation_status
+        - onboarding_state
+      properties:
+        company_id:
+          type: string
+        requested_device_uid:
+          type: string
+        canonical_device_uid:
+          type: string
+        canonical_resolved_by:
+          type: string
+          enum: [direct, alias, superseded_redirect, unresolved]
+          nullable: true
+        canonical_alias_kind:
+          type: string
+          nullable: true
+        canonical_alias_status:
+          type: string
+          nullable: true
+        managed_status:
+          type: string
+        lifecycle_scope:
+          type: string
+        configuration_status:
+          type: string
+          enum: [complete, incomplete]
+        missing_required_fields:
+          type: array
+          items:
+            type: string
+        ready_for_validation:
+          type: boolean
+        validation_status:
+          type: string
+          enum: [never_run, queued, in_progress, failed, succeeded]
+        validation_reason_code:
+          type: string
+          nullable: true
+        onboarding_state:
+          type: string
+          enum:
+            - candidate_unconfigured
+            - candidate_configured
+            - validation_failed
+            - validation_succeeded
+            - managed_unbound
+            - managed_pull_ready
+        command:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            company_id:
+              type: string
+            agent_id:
+              type: string
+              format: uuid
+            command_type:
+              type: string
+              enum: [VALIDATE_DEVICE_CANDIDATE]
+            status:
+              type: string
+              enum: [queued]
+            created_at:
+              type: string
+              format: date-time
+            expires_at:
+              type: string
+              format: date-time
+              nullable: true
+    DeviceOnboardingReadinessActiveBinding:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        bound_at:
+          type: string
+          format: date-time
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    DeviceOnboardingReadinessManagingAgent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_heartbeat_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_online_now:
+          type: boolean
+        online_window_minutes:
+          type: integer
+    DeviceReportedStateReadModel:
+      type: object
+      properties:
+        reporting_agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [healthy, degraded, blocked, offline, unknown]
+        reason:
+          type: string
+          nullable: true
+        reported_at:
+          type: string
+          format: date-time
+          nullable: true
+        reported_stale:
+          type: boolean
+        stale_after_minutes:
+          type: integer
+        last_validation_status:
+          type: string
+          enum: [never_run, queued, in_progress, failed, succeeded]
+          nullable: true
+        last_validation_reason:
+          type: string
+          nullable: true
+        last_pull_status:
+          type: string
+          enum: [queued, sent, acknowledged, failed, expired, accepted, partial, rejected, idle, error, unknown]
+          nullable: true
+        last_pull_reason:
+          type: string
+          nullable: true
+        last_successful_pull_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_local_contact_at:
+          type: string
+          format: date-time
+          nullable: true
+    DeviceOnboardingReadinessResponse:
+      type: object
+      required:
+        - company_id
+        - requested_device_uid
+        - canonical_device_uid
+        - readiness_status
+        - readiness_label
+        - readiness_reason
+        - managed_status
+        - lifecycle_scope
+        - configuration_status
+        - missing_required_fields
+        - ready_for_validation
+        - validation_status
+        - onboarding_state
+      properties:
+        company_id:
+          type: string
+        requested_device_uid:
+          type: string
+        canonical_device_uid:
+          type: string
+        canonical_resolved_by:
+          type: string
+          enum: [direct, alias, superseded_redirect, unresolved]
+          nullable: true
+        canonical_alias_kind:
+          type: string
+          nullable: true
+        canonical_alias_status:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        device_name:
+          type: string
+          nullable: true
+        managed_status:
+          type: string
+        lifecycle_scope:
+          type: string
+        manageability_status:
+          type: string
+          nullable: true
+        manageability_reason:
+          type: string
+          nullable: true
+        site_id:
+          type: string
+          format: uuid
+          nullable: true
+        site_key:
+          type: string
+          nullable: true
+        site_name:
+          type: string
+          nullable: true
+        site_status:
+          type: string
+          enum: [active, inactive]
+          nullable: true
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        suggested_agent_id:
+          type: string
+          format: uuid
+          nullable: true
+        configuration_status:
+          type: string
+          enum: [complete, incomplete]
+        missing_required_fields:
+          type: array
+          items:
+            type: string
+        ready_for_validation:
+          type: boolean
+        validation_status:
+          type: string
+          enum: [never_run, queued, in_progress, failed, succeeded]
+        validation_reason_code:
+          type: string
+          nullable: true
+        validation_last_requested_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_started_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_failure_at:
+          type: string
+          format: date-time
+          nullable: true
+        validation_last_result:
+          type: object
+          nullable: true
+        onboarding_state:
+          type: string
+          enum:
+            - candidate_unconfigured
+            - candidate_configured
+            - validation_failed
+            - validation_succeeded
+            - managed_unbound
+            - managed_pull_ready
+        readiness_status:
+          type: string
+          enum:
+            - candidate_incomplete_configuration
+            - candidate_ready_for_validation
+            - validation_failed
+            - validation_succeeded
+            - managed_unbound
+            - managed_pull_ready
+            - managed_blocked_agent_offline
+            - unknown
+        readiness_label:
+          type: string
+        readiness_reason:
+          type: string
+        reported_state:
+          $ref: "#/components/schemas/DeviceReportedStateReadModel"
+        active_binding:
+          allOf:
+            - $ref: "#/components/schemas/DeviceOnboardingReadinessActiveBinding"
+          nullable: true
+        managing_agent:
+          allOf:
+            - $ref: "#/components/schemas/DeviceOnboardingReadinessManagingAgent"
+          nullable: true
+    AgentDeviceValidationResultRequest:
+      type: object
+      required:
+        - command_id
+        - device_uid
+        - completed_at
+        - result
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+        device_uid:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+        result:
+          type: object
+          required:
+            - success
+          properties:
+            success:
+              type: boolean
+            reason_code:
+              type: string
+              nullable: true
+            evidence:
+              type: object
+    AgentDeviceValidationResultResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        command_id:
+          type: string
+          format: uuid
+        command_status:
+          type: string
+          enum: [acknowledged]
+        requested_device_uid:
+          type: string
+        canonical_device_uid:
+          type: string
+        canonical_resolved_by:
+          type: string
+          enum: [direct, alias, superseded_redirect, unresolved]
+        canonical_alias_kind:
+          type: string
+          nullable: true
+        canonical_alias_status:
+          type: string
+          nullable: true
+        result:
+          type: object
+          properties:
+            success:
+              type: boolean
+            reason_code:
+              type: string
+              nullable: true
+        lifecycle_event_written:
+          type: boolean
+        configuration_status:
+          type: string
+          enum: [complete, incomplete]
+        missing_required_fields:
+          type: array
+          items:
+            type: string
+        ready_for_validation:
+          type: boolean
+        validation_status:
+          type: string
+          enum: [never_run, queued, in_progress, failed, succeeded]
+        validation_reason_code:
+          type: string
+          nullable: true
+        onboarding_state:
+          type: string
+          enum:
+            - candidate_unconfigured
+            - candidate_configured
+            - validation_failed
+            - validation_succeeded
+            - managed_unbound
+            - managed_pull_ready
+    ManagingAgentBindingRequest:
+      type: object
+      required:
+        - agent_id
+      properties:
+        company_id:
+          type: string
+        agent_id:
+          type: string
+        reason:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+    DeviceManagingAgentBinding:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        device_uid:
+          type: string
+        agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, inactive, superseded]
+        bound_at:
+          type: string
+          format: date-time
+        unbound_at:
+          type: string
+          format: date-time
+          nullable: true
+        bound_by_key_id:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ManagingAgentBindingResponse:
+      type: object
+      properties:
+        company_id:
+          type: string
+        requested_device_uid:
+          type: string
+        canonical_device_uid:
+          type: string
+        canonical_resolved_by:
+          type: string
+          enum: [direct, alias, superseded_redirect, unresolved]
+        canonical_alias_kind:
+          type: string
+          nullable: true
+        canonical_alias_status:
+          type: string
+          nullable: true
+        binding_action:
+          type: string
+          enum: [bound, rebound, noop]
+        previous_agent_id:
+          type: string
+          nullable: true
+        binding:
+          $ref: "#/components/schemas/DeviceManagingAgentBinding"
+    DeviceRemediationRequest:
+      type: object
+      required:
+        - remediation_status
+      properties:
+        company_id:
+          type: string
+        remediation_status:
+          type: string
+          nullable: true
+          enum: [needs_field_action]
+        note:
+          type: string
+        owner:
+          type: string
+    ManageabilityView:
+      type: object
+      properties:
+        effective_status:
+          type: string
+          enum: [unknown, reachable, protocol_reachable, blocked, manageable, ingesting, needs_field_action]
+        effective_reason:
+          type: string
+          nullable: true
+        system_status:
+          type: string
+          enum: [unknown, reachable, protocol_reachable, blocked, manageable, ingesting]
+        system_reason:
+          type: string
+          nullable: true
+        manual_status:
+          type: string
+          enum: [needs_field_action]
+          nullable: true
+        manual_note:
+          type: string
+          nullable: true
+        manual_owner:
+          type: string
+          nullable: true
+        manual_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        manual_updated_by_key_id:
+          type: string
+          nullable: true
+        last_proven_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_proven_manageable:
+          type: boolean
+    AgentHeartbeatRequest:
+      type: object
+      properties:
+        uptime_sec:
+          type: integer
+          minimum: 0
+        memory:
+          type: object
+        loadavg:
+          type: array
+          items:
+            type: number
+        hostname:
+          type: string
+        platform:
+          type: string
+        agent_version:
+          type: string
+        rollout_channel:
+          type: string
+          enum: [stable, beta]
+    AgentBootstrapRequest:
+      type: object
+      required:
+        - provisioning_token
+        - agent_name
+      properties:
+        provisioning_token:
+          type: string
+        agent_name:
+          type: string
+        metadata:
+          type: object
+    AgentBootstrapResponse:
+      type: object
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+        agent_name:
+          type: string
+        credential_version:
+          type: integer
+        active_runtime_identity_id:
+          type: string
+          format: uuid
+          nullable: true
+        identity_status:
+          type: string
+          enum: [bootstrap_only, active, revoked, replaced]
+          nullable: true
+        runtime_identity_issued_at:
+          type: string
+          format: date-time
+          nullable: true
+        auth_token:
+          type: string
+        registered_at:
+          type: string
+    DiscoveryReportRequest:
+      type: object
+      required:
+        - adapter_id
+        - reported_at
+        - discovered_devices
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        adapter_id:
+          type: string
+        subnet_targets:
+          type: array
+          items:
+            type: string
+        reported_at:
+          type: string
+        discovered_devices:
+          type: array
+          items:
+            type: object
+            required:
+              - ip
+              - vendor
+              - observed_at
+            properties:
+              ip:
+                type: string
+              mac:
+                type: string
+              vendor:
+                type: string
+              model:
+                type: string
+              serial_number:
+                type: string
+              device_uid:
+                type: string
+              discovery_method:
+                type: string
+              confidence:
+                type: number
+              confidence_class:
+                type: string
+                enum: [high, medium, low]
+              confirmation_state:
+                type: string
+                enum: [confirmed, zk_service_reachable, host_reachable]
+              outcome_class:
+                type: string
+                enum: [confirmed, probable, heuristic]
+              failure_reason:
+                type: string
+                enum: [timeout, auth_required, auth_failed, protocol_error, malformed_response, socket_error, network_unreachable]
+                nullable: true
+              identity_source:
+                type: string
+              protocol:
+                type: object
+              observed_at:
+                type: string
+              raw:
+                type: object
+        summary:
+          type: object
+    AgentDeviceEventsBatchRequest:
+      type: object
+      required:
+        - device_uid
+        - events
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+          description: Stable delivery identifier for idempotent retry/reconnect submission.
+        delivery_attempt:
+          type: integer
+          minimum: 1
+        run_id:
+          type: string
+        device_uid:
+          type: string
+        vendor:
+          type: string
+        ingest_method:
+          type: string
+          enum: [agent_pull, agent_realtime, agent_push]
+        device_timezone:
+          type: string
+        pull_started_at:
+          type: string
+        pull_completed_at:
+          type: string
+          format: date-time
+        cursor:
+          type: object
+          properties:
+            requested_since_utc:
+              type: string
+              format: date-time
+            latest_event_time_utc:
+              type: string
+              format: date-time
+            has_more:
+              type: boolean
+        summary:
+          type: object
+        events:
+          type: array
+          items:
+            type: object
+            required:
+              - device_person_id
+              - event_time_local
+              - event_time_utc
+              - direction
+            properties:
+              device_person_id:
+                type: string
+              event_time_local:
+                type: string
+              event_time_utc:
+                type: string
+                format: date-time
+              device_timezone:
+                type: string
+              direction:
+                type: string
+                enum: [IN, OUT]
+              event_type:
+                type: string
+              verify_state:
+                type: string
+              verify_method:
+                type: string
+              dedup_key:
+                type: string
+              raw:
+                type: object
+    AgentDeviceEventsBatchResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        batch_id:
+          type: string
+          format: uuid
+        delivery_id:
+          type: string
+        replayed_delivery:
+          type: boolean
+        inserted_count:
+          type: integer
+        deduped_count:
+          type: integer
+        rejected_count:
+          type: integer
+        latest_event_time_utc:
+          type: string
+        rejection_samples:
+          type: array
+          items:
+            type: object
     IdentityMappingUpsertRequest:
       type: object
       required:

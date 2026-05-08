@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$companyId = 'DEFAULT'
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
 $safeRunId = ($runId -replace '[^A-Za-z0-9]', '')
@@ -9,6 +9,7 @@ if (-not $safeRunId) { $safeRunId = ([guid]::NewGuid().ToString('N')).Substring(
 $runSuffix = "${safeRunId}_jsonnorm"
 $personId = "norm_json_$runSuffix"
 $identifierValue = "AbC123_$runSuffix"
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $encodedPersonId = [uri]::EscapeDataString($personId)
 
 function To-Bool {
@@ -144,7 +145,7 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId" `
+    Invoke-RestMethod "${baseUrl}/api/employees-registry/${encodedPersonId}?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
@@ -160,7 +161,7 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings" `
+    Invoke-RestMethod "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `

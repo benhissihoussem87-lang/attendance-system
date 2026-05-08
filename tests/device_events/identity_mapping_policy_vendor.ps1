@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
-$companyId = 'DEFAULT'
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
 $date = '2026-01-27'
 $runId = $env:CI_RUN_ID
 if (-not $runId) { $runId = ([guid]::NewGuid().ToString('N')).Substring(0, 8) }
@@ -13,6 +13,7 @@ $personId2 = "policy_vendor_p2_$runSuffix"
 $personId3 = "policy_vendor_p3_$runSuffix"
 $employeeCode = "PV_P3_$runSuffix"
 $identifierValue = "ZK_PIN_0001_$runSuffix"
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 $encodedPersonId3 = [uri]::EscapeDataString($personId3)
 
 function To-Bool {
@@ -176,7 +177,7 @@ try {
 
   # CASE C: vendor provider should succeed when identity mapping exists
   try {
-    Invoke-RestMethod "$baseUrl/api/employees-registry/$encodedPersonId3" `
+    Invoke-RestMethod "${baseUrl}/api/employees-registry/${encodedPersonId3}?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `
@@ -192,7 +193,7 @@ try {
   }
 
   try {
-    Invoke-RestMethod "$baseUrl/api/identity-mappings" `
+    Invoke-RestMethod "${baseUrl}/api/identity-mappings?company_id=${encodedCompanyId}" `
       -Method Put `
       -Headers $operatorHeaders `
       -ContentType 'application/json' `

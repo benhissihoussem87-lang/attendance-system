@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 $baseUrl = if ($env:BASE_URL) { $env:BASE_URL } else { 'http://localhost:3000' }
+$companyId = if ($env:COMPANY_ID) { $env:COMPANY_ID } else { 'DEFAULT' }
+$encodedCompanyId = [uri]::EscapeDataString($companyId)
 
 function To-Bool {
   param($value)
@@ -110,7 +112,7 @@ person_id,event_time,direction,device_uid
 p1,2026-01-12 08:00:00,IN,
 "@
 
-  $res = Invoke-RestMethod "$baseUrl/api/device-events/import/commit?company_id=DEFAULT" `
+  $res = Invoke-RestMethod "${baseUrl}/api/device-events/import/commit?company_id=${encodedCompanyId}" `
     -Method Post `
     -Headers $authHeaders `
     -ContentType 'text/plain' `
