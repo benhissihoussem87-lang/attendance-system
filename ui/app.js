@@ -40,7 +40,7 @@ function setTable(rows) {
   tbody.innerHTML = '';
 
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="muted">No attendance records found for this date.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="muted">No rows</td></tr>';
     return;
   }
 
@@ -53,10 +53,10 @@ function setTable(rows) {
       <td>${fmt(reason)}</td>
       <td>${fmt(r.first_in)}</td>
       <td>${fmt(r.last_out)}</td>
-      <td style="text-align: right;">${fmt(r.worked_minutes)}</td>
-      <td style="text-align: right;">${fmt(r.break_minutes)}</td>
-      <td style="text-align: right;">${fmt(r.net_worked_minutes)}</td>
-      <td style="text-align: right;">${fmt(r.late_minutes)}</td>
+      <td>${fmt(r.worked_minutes)}</td>
+      <td>${fmt(r.break_minutes)}</td>
+      <td>${fmt(r.net_worked_minutes)}</td>
+      <td>${fmt(r.late_minutes)}</td>
       <td>${fmt(r.source)}</td>
     `;
     tbody.appendChild(tr);
@@ -84,12 +84,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const date = qs('date').value;
     if (!date) return;
 
-    const btn = qs('btnLoad');
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Loading...';
-    btn.setAttribute('aria-busy', 'true');
-
     setStatus('Loading...');
     try {
       const rows = await loadAttendance(date);
@@ -101,10 +95,6 @@ window.addEventListener('DOMContentLoaded', () => {
       setStatus('Error: ' + e.message);
       setTable([]);
       setRaw({ error: e.message });
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalText;
-      btn.removeAttribute('aria-busy');
     }
   });
 });

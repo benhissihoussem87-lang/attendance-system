@@ -91,11 +91,21 @@ function isStalePullDevicePathCapability(err) {
 }
 
 export function bindSync() {
-  byId('syncHistory').addEventListener('click', () => syncHistory().catch(err => {
-    state.operationsErrors.sync = productError(err);
-    state.selectedDeviceTechnicalDetails.sync = technicalErrorDetails(err);
-    byId('syncState').textContent = resolveSyncState();
-  }));
+  byId('syncHistory').addEventListener('click', async () => {
+    const btn = byId('syncHistory');
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      await syncHistory();
+    } catch (err) {
+      state.operationsErrors.sync = productError(err);
+      state.selectedDeviceTechnicalDetails.sync = technicalErrorDetails(err);
+      byId('syncState').textContent = resolveSyncState();
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    }
+  });
 }
 
 function productError(err) {

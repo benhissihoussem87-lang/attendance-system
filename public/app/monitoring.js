@@ -91,16 +91,37 @@ export async function disconnectMonitoring() {
 }
 
 export function bindMonitoring() {
-  byId('connectMonitoring').addEventListener('click', () => connectMonitoring().catch(err => {
-    state.operationsErrors.monitoring = productError('Connect failed', err);
-    state.selectedDeviceTechnicalDetails.monitoringError = technicalErrorDetails(err);
-    renderMonitoring();
-  }));
-  byId('disconnectMonitoring').addEventListener('click', () => disconnectMonitoring().catch(err => {
-    state.operationsErrors.monitoring = productError('Disconnect failed', err);
-    state.selectedDeviceTechnicalDetails.monitoringError = technicalErrorDetails(err);
-    renderMonitoring();
-  }));
+  byId('connectMonitoring').addEventListener('click', async () => {
+    const btn = byId('connectMonitoring');
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      await connectMonitoring();
+    } catch (err) {
+      state.operationsErrors.monitoring = productError('Connect failed', err);
+      state.selectedDeviceTechnicalDetails.monitoringError = technicalErrorDetails(err);
+      renderMonitoring();
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    }
+  });
+
+  byId('disconnectMonitoring').addEventListener('click', async () => {
+    const btn = byId('disconnectMonitoring');
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      await disconnectMonitoring();
+    } catch (err) {
+      state.operationsErrors.monitoring = productError('Disconnect failed', err);
+      state.selectedDeviceTechnicalDetails.monitoringError = technicalErrorDetails(err);
+      renderMonitoring();
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    }
+  });
 }
 
 function sessionBelongsToSelectedDevice(session) {
