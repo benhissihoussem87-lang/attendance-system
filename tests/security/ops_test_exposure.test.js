@@ -68,6 +68,28 @@ async function run() {
     `Expected 404 or 403 for /api/ops/test/mode in production mode, got ${modeRes.status}. Body: ${modeRes.data}`
   );
 
+  const employeesRes = await requestRaw({
+    method: 'GET',
+    url: `${baseUrl}/api/employees`,
+    headers: {}
+  });
+
+  assert.ok(
+    employeesRes.status === 404 || employeesRes.status === 403,
+    `Expected 404 or 403 for /api/employees in production mode, got ${employeesRes.status}. Body: ${employeesRes.data}`
+  );
+
+  const ruleSetsRes = await requestRaw({
+    method: 'GET',
+    url: `${baseUrl}/api/rule-sets`,
+    headers: {}
+  });
+
+  assert.ok(
+    ruleSetsRes.status === 404 || ruleSetsRes.status === 403,
+    `Expected 404 or 403 for /api/rule-sets in production mode, got ${ruleSetsRes.status}. Body: ${ruleSetsRes.data}`
+  );
+
   console.log('PASS: ops_test_exposure.test.js');
 }
 
