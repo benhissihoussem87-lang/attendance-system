@@ -30,8 +30,6 @@ async function preflightEmployeeAssignments() {
 // API routes
 app.use('/api/auth', require('./api/auth.routes'));
 app.use('/api/system', require('./api/system.routes'));
-app.use('/api/employees', require('./api/employees.routes'));
-app.use('/api/rule-sets', require('./api/ruleSets.routes'));
 app.use('/api/attendance', require('./api/attendance.routes'));
 app.use('/api/attendance-v1', require('./api/attendanceV1.routes'));
 app.use('/api', require('./api/resolutions.routes'));
@@ -45,6 +43,8 @@ app.use('/api/agent', require('./api/agent.routes'));
 app.use('/api/ops', require('./api/ops.routes'));
 if (toBool(process.env.ALLOW_TEST_ENDPOINTS)) {
   app.use('/api/ops/test', require('./api/opsTest.routes'));
+  app.use('/api/employees', require('./api/employees.routes'));
+  app.use('/api/rule-sets', require('./api/ruleSets.routes'));
 }
 app.use('/api/policy-profiles', require('./api/policyProfiles.routes'));
 app.use('/api/resolutions', require('./api/resolutionsByDate.routes'));
